@@ -11,5 +11,4 @@ go get github.com/goimp/pprint
 
 #### Todo:
 * sortMap (safeKey)
-* pprintString
 * pprintBytes

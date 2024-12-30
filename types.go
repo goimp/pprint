@@ -20,12 +20,21 @@ type StructField struct {
 	Entry any
 }
 
-// func idInContext(objectId uintptr, context Context) bool {
-// 	_, exists := context[objectId]
-// 	return exists
-// }
-
 func (ctx Context) Contains(objectId uintptr) bool {
 	_, exists := ctx[objectId]
 	return exists
 }
+
+type InaccessibleField struct {
+	Name   string
+	Reason string
+}
+
+func (i InaccessibleField) String() string {
+	return "<InaccessibleField>" // Custom string representation when printed
+}
+
+// func reprInaccessible() string {
+// 	// return fmt.Sprintf("%v", reflect.TypeOf(InaccessibleField{}))
+// 	return fmt.Sprintf("%v", InaccessibleField{})
+// }

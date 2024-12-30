@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -30,16 +31,16 @@ type PrettyPrinterInterface interface {
 	IsRecursive(object any) bool                                                                  // +
 	IsReadable(object any) bool                                                                   // +
 	format(object any, stream io.Writer, indent, allowance int, context Context, level int)       // +
-	pprintMap(object any, stream io.Writer, indent, allowance int, context Context, level int)    // pprint_dict
+	pprintMap(object any, stream io.Writer, indent, allowance int, context Context, level int)    // +
 	pprintSlice(object any, stream io.Writer, indent, allowance int, context Context, level int)  // +
 	pprintStruct(object any, stream io.Writer, indent, allowance int, context Context, level int) // +
-	// pprintString(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_string
+	pprintString(object any, stream io.Writer, indent, allowance int, context Context, level int) // +
 	// pprintBytes(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / pprint_bytearray
 	// pprintMappingProxy(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / _pprint_mappingproxy
 	// pprintSimpleNameSpace(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / _pprint_simplenamespace
 
-	formatMapItems(items []MappingItem, stream io.Writer, indent, allowance int, context Context, level int) // pprint_dict
-	formatItems(object []any, stream io.Writer, indent, allowance int, context Context, level int)           // pprint_dict
+	formatMapItems(items []MappingItem, stream io.Writer, indent, allowance int, context Context, level int) // +
+	formatItems(object []any, stream io.Writer, indent, allowance int, context Context, level int)           // +
 	formatStructItems(items []StructField, stream io.Writer, indent, allowance int, context Context, level int)
 
 	//	formatNameSpaceItems(items []map[any]any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_dict
@@ -250,6 +251,7 @@ func (pp PrettyPrinter) formatItems(items []any, stream io.Writer, indent, allow
 }
 
 func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allowance int, context Context, level int) {
+
 	value := reflect.ValueOf(object)
 	if value.Kind() == reflect.Struct {
 		// Get the name of the struct
@@ -261,22 +263,30 @@ func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allow
 
 		var items []StructField
 
-		// Now you can process the fields of the struct if needed
+		// Now you can process the fields of the struct
 		for i := 0; i < value.NumField(); i++ {
 			field := value.Field(i)
 			fieldName := typ.Field(i).Name
-			if typ.Field(i).PkgPath == "" {
+			// fmt.Println("isValid", field.IsValid(), "canSet", field.CanSet(), "canInterface", field.CanInterface())
+			// if field.IsValid() && field.CanSet() {
+			if field.IsValid() && field.CanInterface() {
 				items = append(items, StructField{
 					Name:  fieldName,
-					Entry: field.Interface(),
+					Entry: field.Interface(), // Access the field as interface{}
 				})
 			} else {
 				items = append(items, StructField{
-					Name:  fieldName,
-					Entry: "<private_field>",
+					Name: fieldName,
+					// Entry: reprInaccessible(),
+					Entry: InaccessibleField{},
+					// Entry: "<private_field>", // Represent inaccessible fields
+					// Entry: InaccessibleField{
+					// 	Name: fieldName, Reason: "Unexported field",
+					// }, // Represent inaccessible fields
 				})
 			}
 		}
+
 		io.WriteString(stream, structName+"(")
 		pp.formatStructItems(items, stream, indent, allowance, context, level)
 		io.WriteString(stream, ")")
@@ -304,6 +314,83 @@ func (pp PrettyPrinter) formatStructItems(items []StructField, stream io.Writer,
 	}
 }
 
+func (pp PrettyPrinter) pprintString(object any, stream io.Writer, indent, allowance int, context Context, level int) {
+	// io.WriteString()
+	if str, ok := object.(string); ok {
+		if len(str) == 0 {
+			// Assuming repr is implemented to return the string's representation
+			io.WriteString(stream, repr(object))
+			return
+		}
+		chunks := []string{}
+		lines := strings.Split(str, "\n")
+		if level == 1 {
+			indent += 1
+			allowance += 1
+		}
+		maxWidth1 := pp.width - indent
+		maxWidth := maxWidth1 // You don't need a pointer here, just use the value directly
+
+		rep := ""
+		for i, line := range lines {
+			rep = repr(object) // Ensure repr is properly implemented in Go
+			if i == len(lines)-1 {
+				maxWidth1 -= allowance
+			}
+			if len(rep) <= maxWidth1 {
+				chunks = append(chunks, rep)
+			} else {
+				re := regexp.MustCompile(`\S*\s*`)
+				parts := re.FindAllString(line, -1)
+				if len(parts) == 0 {
+					fmt.Println("No parts found")
+					return
+				}
+				if parts[len(parts)-1] != "" {
+					fmt.Println("Last part should be empty")
+					return
+				}
+				parts = parts[:len(parts)-1]
+				maxWidth2 := maxWidth
+				current := ""
+				for j, part := range parts {
+					candidate := current + part
+					if j == len(parts)-1 && i == len(lines)-1 {
+						maxWidth2 -= allowance
+					}
+					if len(repr(candidate)) > maxWidth2 {
+						if len(current) > 0 {
+							chunks = append(chunks, repr(current))
+						}
+						current = part
+					} else {
+						current = candidate
+					}
+				}
+				if len(current) > 0 {
+					chunks = append(chunks, repr(current))
+				}
+			}
+		}
+		if len(chunks) == 1 {
+			io.WriteString(stream, rep)
+			return
+		}
+		if level == 1 {
+			io.WriteString(stream, "(")
+		}
+		for i, rep := range chunks {
+			if i > 0 {
+				io.WriteString(stream, "\n"+strings.Repeat(" ", indent))
+			}
+			io.WriteString(stream, rep)
+		}
+		if level == 1 {
+			io.WriteString(stream, ")")
+		}
+	}
+}
+
 // repr simulates the Python's repr function that returns a string representation of the object.
 func (pp PrettyPrinter) repr(object any, context Context, level int) string {
 	repr, readable, recursive := pp.Format(object, copyContext(context), pp.depth, level)
@@ -323,7 +410,11 @@ func (pp PrettyPrinter) Format(object any, context Context, maxLevels, level int
 func (pp PrettyPrinter) safeRepr(object any, context Context, maxLevels, level int) (string, bool, bool) {
 
 	if object == nil {
-		return fmt.Sprintf("%v", object), false, false
+		return repr(object), false, false
+	}
+
+	if object, ok := object.(InaccessibleField); ok {
+		return object.String(), false, false
 	}
 
 	// Get the type of the object
@@ -332,7 +423,7 @@ func (pp PrettyPrinter) safeRepr(object any, context Context, maxLevels, level i
 	// Check if the object is one of the basic scalar types (e.g., int, float)
 	for _, element := range builtinScalars {
 		if element == typ {
-			return fmt.Sprintf("%v", object), true, false
+			return repr(object), true, false
 		}
 	}
 
@@ -464,7 +555,7 @@ func (pp PrettyPrinter) safeRepr(object any, context Context, maxLevels, level i
 		return fmt.Sprintf(format, strings.Join(components, ", ")), readable, recursive
 	}
 
-	rep := fmt.Sprintf("%v", object)
+	rep := repr(object)
 
-	return rep, true, true
+	return rep, true, false
 }

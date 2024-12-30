@@ -1,6 +1,7 @@
 package pprint
 
 import (
+	"fmt"
 	"os"
 	"testing"
 )
@@ -47,7 +48,8 @@ func TestPPrintScalars(t *testing.T) {
 		PPrint(i, nil, 1, 80, 2, false, true, false)
 	}
 	s := "sample string"
-	if out := PFormat(s, nil, 1, 80, 2, false, true, false); out != s {
+	se := "\"sample string\""
+	if out := PFormat(s, nil, 1, 80, 2, false, true, false); out != se {
 		t.Errorf("expected 1, got %s", out)
 	} else {
 		PPrint(s, nil, 1, 80, 2, false, true, false)
@@ -65,7 +67,7 @@ func TestPPrintSlice(t *testing.T) {
 	l := []any{1, "sample text", true, 111111, 2222222, 333333, 444444, 555555, 666666, 7777777, 8888888, 99999999}
 
 	var exp = `[1,
- sample text,
+ "sample text",
  true,
  111111,
  2222222,
@@ -131,17 +133,17 @@ func TestPPrintStruct(t *testing.T) {
 
 	sT := createSampleType("sample_text", nil)
 	exp := `sampleType(F1=1,
-           F2=sample_text2,
-           F3=sample_text3,
-           F4=sample_text4,
-           F5=sample_text5,
-           F6=sample_text6,
-           F7=sample_text7,
-           F8=sample_text8,
-           F9=sample_text9,
-           F10=sample_text10,
+           F2="sample_text2",
+           F3="sample_text3",
+           F4="sample_text4",
+           F5="sample_text5",
+           F6="sample_text6",
+           F7="sample_text7",
+           F8="sample_text8",
+           F9="sample_text9",
+           F10="sample_text10",
            F11=<nil>,
-           private=<private_field>)`
+           private=<InaccessibleField>)`
 	if out := PFormat(sT, nil, 1, 80, 2, false, true, false); out != exp {
 		t.Errorf("expected 1, got %s", out)
 	} else {
@@ -165,33 +167,33 @@ func TestPPrintNested(t *testing.T) {
 	sT := createSampleType("sample_text", nM)
 
 	exp := `sampleType(F1=1,
-           F2=sample_text2,
-           F3=sample_text3,
-           F4=sample_text4,
-           F5=sample_text5,
-           F6=sample_text6,
-           F7=sample_text7,
-           F8=sample_text8,
-           F9=sample_text9,
-           F10=sample_text10,
-           F11={1: 11,
+           F2="sample_text2",
+           F3="sample_text3",
+           F4="sample_text4",
+           F5="sample_text5",
+           F6="sample_text6",
+           F7="sample_text7",
+           F8="sample_text8",
+           F9="sample_text9",
+           F10="sample_text10",
+           F11={"1": 11,
             2: 22,
-            slice: [1,
-                    sample text,
-                    true,
-                    [1,
-                     sample text,
-                     true,
-                     111111,
-                     2222222,
-                     333333,
-                     444444,
-                     555555,
-                     666666,
-                     7777777,
-                     8888888,
-                     99999999]]},
-           private=<private_field>)`
+            "slice": [1,
+                      "sample text",
+                      true,
+                      [1,
+                       "sample text",
+                       true,
+                       111111,
+                       2222222,
+                       333333,
+                       444444,
+                       555555,
+                       666666,
+                       7777777,
+                       8888888,
+                       99999999]]},
+           private=<InaccessibleField>)`
 	if out := PFormat(sT, nil, 1, 80, 5, false, true, false); out != exp {
 		t.Errorf("expected 1, got %s", out)
 	} else {
@@ -223,4 +225,21 @@ func TestPPrintFormat(t *testing.T) {
 		Value: 42,
 	}
 	pp.format(testStruct, pp.stream, 2, 0, make(Context), 0)
+}
+
+func TestRepr(t *testing.T) {
+	type Person struct {
+		Name string
+		Age  int
+	}
+
+	p := Person{Name: "John", Age: 30}
+
+	// Using %v
+	fmt.Printf("%v\n", p)               // Output: {John 30}
+	fmt.Printf("%v\n", "sample_string") // Output: {John 30}
+
+	// Using %#v
+	fmt.Println(repr(p))               // Output: main.Person{Name:"John", Age:30}
+	fmt.Println(repr("sample_string")) // Output: {John 30}
 }

@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+func repr(object any) string {
+	return fmt.Sprintf("%#v", object)
+}
+
 func id(object any) uintptr {
 	// Get the reflect.Value of the object
 	value := reflect.ValueOf(object)
@@ -55,17 +59,9 @@ func formatWithUnderscores(num int) string {
 }
 
 func recursion(object any) string {
-	// Get the type of the object
 	objectType := reflect.TypeOf(object).Name()
-
-	// Get the memory address (simulating id in Python)
-	// Use reflect.ValueOf to get the value, then convert to unsafe.Pointer
-	// objectValue := reflect.ValueOf(object)
-	// objectID := fmt.Sprintf("%v", unsafe.Pointer(objectValue.Pointer()))
 	objectId := id(object)
-
-	// Return the formatted string similar to Python's recursion function
-	return fmt.Sprintf("<Recursion on %s with id=%v>", objectType, objectId)
+	return fmt.Sprintf("<Recursion on %s with id=%s>", objectType, repr(objectId))
 }
 
 func wrapBytesRepr(object []byte, width, allowance int) []string {
@@ -79,9 +75,9 @@ func wrapBytesRepr(object []byte, width, allowance int) []string {
 		if i == last {
 			width -= allowance
 		}
-		if len(fmt.Sprintf("%v", candidate)) > width {
+		if len(repr(candidate)) > width {
 			if len(current) > 0 {
-				result = append(result, fmt.Sprintf("%v", current))
+				result = append(result, repr(current))
 			}
 			current = part
 		} else {
@@ -91,7 +87,7 @@ func wrapBytesRepr(object []byte, width, allowance int) []string {
 
 	// Add the final part if there's any remaining
 	if len(current) > 0 {
-		result = append(result, fmt.Sprintf("%v", current))
+		result = append(result, repr(current))
 	}
 
 	return result
