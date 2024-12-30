@@ -40,18 +40,48 @@ func createSampleType(baseString string, nM any) sampleType {
 
 func TestPPrintScalars(t *testing.T) {
 	i := 1
-	PPrint(i, nil, 1, 80, 2, false, true, false)
-
+	ie := "1"
+	if out := PFormat(i, nil, 1, 80, 2, false, true, false); out != ie {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(i, nil, 1, 80, 2, false, true, false)
+	}
 	s := "sample string"
-	PPrint(s, nil, 1, 80, 2, false, true, false)
-
+	if out := PFormat(s, nil, 1, 80, 2, false, true, false); out != s {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(s, nil, 1, 80, 2, false, true, false)
+	}
 	f := 0.123
-	PPrint(f, nil, 1, 80, 2, false, true, false)
+	fe := "0.123"
+	if out := PFormat(f, nil, 1, 80, 2, false, true, false); out != fe {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(f, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintSlice(t *testing.T) {
 	l := []any{1, "sample text", true, 111111, 2222222, 333333, 444444, 555555, 666666, 7777777, 8888888, 99999999}
-	PPrint(l, nil, 1, 80, 2, false, true, false)
+
+	var exp = `[1,
+ sample text,
+ true,
+ 111111,
+ 2222222,
+ 333333,
+ 444444,
+ 555555,
+ 666666,
+ 7777777,
+ 8888888,
+ 99999999]`
+
+	if out := PFormat(l, nil, 1, 80, 2, false, true, false); out != exp {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(l, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintMap(t *testing.T) {
@@ -73,13 +103,50 @@ func TestPPrintMap(t *testing.T) {
 		"21":     22,
 		"55551":  22,
 	}
+	// 	exp := `{1: 11,
+	//  2: 22,
+	//  2: 22,
+	//  sdas1: 22,
+	//  Sdas: 22,
+	//  asad: 22,
+	//  sadsa1: 22,
+	//  21: 22,
+	//  sdas: 22,
+	//  3: 22,
+	//  asad1: 22,
+	//  31: 22,
+	//  sdddd: 22,
+	//  sadsa: 22,
+	//  5555: 22,
+	//  55551: 22}`
+	// 	if out := PFormat(m, nil, 1, 80, 2, false, true, false); out != exp {
+	// 		t.Errorf("expected 1, got %s", out)
+	// 	} else {
+	// 		PPrint(m, nil, 1, 80, 2, false, true, false)
+	// 	}
 	PPrint(m, nil, 1, 80, 2, false, true, false)
 }
 
 func TestPPrintStruct(t *testing.T) {
 
 	sT := createSampleType("sample_text", nil)
-	PPrint(sT, nil, 1, 80, 5, false, true, false)
+	exp := `sampleType(F1=1,
+           F2=sample_text2,
+           F3=sample_text3,
+           F4=sample_text4,
+           F5=sample_text5,
+           F6=sample_text6,
+           F7=sample_text7,
+           F8=sample_text8,
+           F9=sample_text9,
+           F10=sample_text10,
+           F11=<nil>,
+           private=<private_field>)`
+	if out := PFormat(sT, nil, 1, 80, 2, false, true, false); out != exp {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(sT, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintNested(t *testing.T) {
@@ -97,7 +164,39 @@ func TestPPrintNested(t *testing.T) {
 
 	sT := createSampleType("sample_text", nM)
 
-	PPrint(sT, nil, 1, 80, 5, false, true, false)
+	exp := `sampleType(F1=1,
+           F2=sample_text2,
+           F3=sample_text3,
+           F4=sample_text4,
+           F5=sample_text5,
+           F6=sample_text6,
+           F7=sample_text7,
+           F8=sample_text8,
+           F9=sample_text9,
+           F10=sample_text10,
+           F11={1: 11,
+            2: 22,
+            slice: [1,
+                    sample text,
+                    true,
+                    [1,
+                     sample text,
+                     true,
+                     111111,
+                     2222222,
+                     333333,
+                     444444,
+                     555555,
+                     666666,
+                     7777777,
+                     8888888,
+                     99999999]]},
+           private=<private_field>)`
+	if out := PFormat(sT, nil, 1, 80, 5, false, true, false); out != exp {
+		t.Errorf("expected 1, got %s", out)
+	} else {
+		PPrint(sT, nil, 1, 80, 5, false, true, false)
+	}
 }
 
 func TestPPrintFormat(t *testing.T) {
