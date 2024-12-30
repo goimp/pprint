@@ -63,7 +63,7 @@ func init() {
 	defaultDispatchMap[reflect.Map] = PrettyPrinter.pprintMap
 	defaultDispatchMap[reflect.Slice] = PrettyPrinter.pprintSlice
 	defaultDispatchMap[reflect.Struct] = PrettyPrinter.pprintStruct
-	defaultDispatchMap[reflect.String] = PrettyPrinter.pprintString
+	defaultDispatchMap[reflect.Pointer] = PrettyPrinter.pprintPointer
 
 	builtinScalars = []any{
 		getType[bool](),

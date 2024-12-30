@@ -131,25 +131,17 @@ func (pp PrettyPrinter) format(object any, stream io.Writer, indent, allowance i
 		return
 	}
 
-	rep := ""
-	value := reflect.ValueOf(object)
-	if value.Kind() == reflect.Pointer {
-		fmt.Println("POINTER")
-		value := reflect.Indirect(value).Interface()
-		// fmt.Println(value)
-		io.WriteString(stream, fmt.Sprintf("%s(%#x)", "&", objectId))
-		indent += len(fmt.Sprintf("%s(%#x)", "&", objectId))
-		pp.format(value, stream, indent, allowance, context, level)
-	} else {
-		// Get the string representation of the object
-		rep = pp.repr(object, context, level)
-	}
-
+	rep := pp.repr(object, context, level)
 	// Check if the representation exceeds the max width
 	maxWidth := pp.width - indent - allowance
 
 	if len(rep) > maxWidth {
-		p, exists := pp.dispatchMap[reflect.TypeOf(object).Kind()]
+		if object == nil {
+			io.WriteString(stream, rep)
+			return
+		}
+		typ := reflect.TypeOf(object)
+		p, exists := pp.dispatchMap[typ.Kind()]
 		if exists {
 			context[objectId] = 1
 			p(pp, object, stream, indent, allowance, context, level+1)
@@ -160,6 +152,20 @@ func (pp PrettyPrinter) format(object any, stream io.Writer, indent, allowance i
 
 	// Write the normal representation to the stream
 	io.WriteString(stream, rep)
+}
+
+func (pp PrettyPrinter) pprintPointer(object any, stream io.Writer, indent, allowance int, context Context, level int) {
+	// objectId := id(object)
+	// typ := reflect.TypeOf(object)
+	value := reflect.ValueOf(object)
+	if value.Kind() == reflect.Pointer {
+		pointerPrefix := fmt.Sprintf("(%T=%p)&", object, object)
+		io.WriteString(stream, pointerPrefix)
+		intf := reflect.Indirect(value).Interface()
+		// indent += len(pointerPrefix)
+		indent += 1
+		pp.format(intf, stream, indent, allowance, context, level)
+	}
 }
 
 func (pp PrettyPrinter) pprintMap(object any, stream io.Writer, indent, allowance int, context Context, level int) {
@@ -269,9 +275,6 @@ func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allow
 		// Get the name of the struct
 		typ := reflect.TypeOf(object)
 		structName := typ.Name()
-		// fmt.Fprintf(stream, "Struct Name: %s\n", structName)
-
-		indent += len(structName) + 1
 
 		var items []StructField
 
@@ -294,17 +297,20 @@ func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allow
 			}
 		}
 
-		io.WriteString(stream, structName+"(")
-		pp.formatStructItems(items, stream, indent, allowance, context, level)
-		io.WriteString(stream, ")")
+		io.WriteString(stream, structName+"(\n")
+		pp.formatStructItems(items, stream, indent+1, allowance, context, level)
+		io.WriteString(stream, "\n"+strings.Repeat(" ", indent)+")")
 	}
 }
 
 func (pp PrettyPrinter) formatStructItems(items []StructField, stream io.Writer, indent, allowance int, context Context, level int) {
-	delimnl := ",\n" + strings.Repeat(" ", indent)
+	delimnl := ",\n"
+	delim := strings.Repeat(" ", indent+1)
 	lastIndex := len(items) - 1
 	for i, item := range items {
 		last := i == lastIndex
+
+		io.WriteString(stream, delim)
 		io.WriteString(stream, item.Name)
 		io.WriteString(stream, "=")
 
@@ -312,7 +318,7 @@ func (pp PrettyPrinter) formatStructItems(items []StructField, stream io.Writer,
 		if context.Contains(id(item.Entry)) {
 			io.WriteString(stream, "...")
 		} else {
-			pp.format(item.Entry, stream, indent, allowance, context, level)
+			pp.format(item.Entry, stream, indent+len(item.Name)+2, allowance, context, level)
 		}
 
 		if !last {

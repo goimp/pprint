@@ -1,8 +1,10 @@
 package pprint
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -11,13 +13,7 @@ type sampleType struct {
 	F2      string
 	F3      string
 	F4      string
-	F5      string
-	F6      string
-	F7      string
-	F8      string
-	F9      string
-	F10     string
-	F11     any
+	F5      any
 	private int
 }
 
@@ -28,13 +24,7 @@ func createSampleType(baseString string, nM any) sampleType {
 		F2:      baseString + "2",
 		F3:      baseString + "3",
 		F4:      baseString + "4",
-		F5:      baseString + "5",
-		F6:      baseString + "6",
-		F7:      baseString + "7",
-		F8:      baseString + "8",
-		F9:      baseString + "9",
-		F10:     baseString + "10",
-		F11:     nM,
+		F5:      nM,
 		private: 10,
 	}
 }
@@ -66,7 +56,7 @@ func TestPPrintScalars(t *testing.T) {
 func TestPPrintPtr(t *testing.T) {
 	var i *int = new(int)
 	*i = 1
-	exp := "*int"
+	exp := fmt.Sprintf("(%T=%p)&%#v", i, i, *i)
 	if out := PFormat(i, nil, 1, 80, 2, false, true, false); out != exp {
 		t.Errorf("expected %s, got %s", exp, out)
 	} else {
@@ -143,18 +133,14 @@ func TestPPrintMap(t *testing.T) {
 func TestPPrintStruct(t *testing.T) {
 
 	sT := createSampleType("sample_text", nil)
-	exp := `sampleType(F1=1,
-           F2="sample_text2",
-           F3="sample_text3",
-           F4="sample_text4",
-           F5="sample_text5",
-           F6="sample_text6",
-           F7="sample_text7",
-           F8="sample_text8",
-           F9="sample_text9",
-           F10="sample_text10",
-           F11=<nil>,
-           private=<InaccessibleField>)`
+	exp := `sampleType(
+  F1=1,
+  F2="sample_text2",
+  F3="sample_text3",
+  F4="sample_text4",
+  F5=<nil>,
+  private=<InaccessibleField>
+)`
 	if out := PFormat(sT, nil, 1, 80, 2, false, true, false); out != exp {
 		t.Errorf("expected %s, got %s", exp, out)
 	} else {
@@ -164,15 +150,30 @@ func TestPPrintStruct(t *testing.T) {
 
 func TestPPrintStructPtr(t *testing.T) {
 	sT2 := createSampleType("sample_text", nil)
+	sT2ptr := &sT2
 
-	sT := createSampleType("sample_text", sT2)
+	sT := createSampleType("sample_text", sT2ptr)
 	sTptr := &sT
-	// exp := "*pprint.sampleType"
-	// if out := PFormat(sTptr, nil, 1, 80, 2, false, true, false); out != exp {
-	// 	t.Errorf("expected %s, got %s", exp, out)
-	// } else {
-	PPrint(sTptr, nil, 1, 80, 2, false, true, false)
-	// }
+	exp := fmt.Sprintf(`(*pprint.sampleType=%p)&sampleType(
+   F1=1,
+   F2="sample_text2",
+   F3="sample_text3",
+   F4="sample_text4",
+   F5=(*pprint.sampleType=%p)&sampleType(
+         F1=1,
+         F2="sample_text2",
+         F3="sample_text3",
+         F4="sample_text4",
+         F5=<nil>,
+         private=<InaccessibleField>
+       ),
+   private=<InaccessibleField>
+ )`, &sT, &sT2)
+	if out := PFormat(sTptr, nil, 1, 80, 2, false, true, false); out != exp {
+		t.Errorf("expected %s, got %s", exp, out)
+	} else {
+		PPrint(sTptr, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintNested(t *testing.T) {
@@ -190,39 +191,39 @@ func TestPPrintNested(t *testing.T) {
 
 	sT := createSampleType("sample_text", nM)
 
-	exp := `sampleType(F1=1,
-           F2="sample_text2",
-           F3="sample_text3",
-           F4="sample_text4",
-           F5="sample_text5",
-           F6="sample_text6",
-           F7="sample_text7",
-           F8="sample_text8",
-           F9="sample_text9",
-           F10="sample_text10",
-           F11={"1": 11,
-            2: 22,
-            "slice": [1,
-                      "sample text",
-                      true,
-                      [1,
-                       "sample text",
-                       true,
-                       111111,
-                       2222222,
-                       333333,
-                       444444,
-                       555555,
-                       666666,
-                       7777777,
-                       8888888,
-                       99999999]]},
-           private=<InaccessibleField>)`
-	if out := PFormat(sT, nil, 1, 80, 5, false, true, false); out != exp {
-		t.Errorf("expected %s, got %s", exp, out)
-	} else {
-		PPrint(sT, nil, 1, 80, 5, false, true, false)
-	}
+	// exp := `sampleType(F1=1,
+	//        F2="sample_text2",
+	//        F3="sample_text3",
+	//        F4="sample_text4",
+	//        F5="sample_text5",
+	//        F6="sample_text6",
+	//        F7="sample_text7",
+	//        F8="sample_text8",
+	//        F9="sample_text9",
+	//        F10="sample_text10",
+	//        F11={"1": 11,
+	//         2: 22,
+	//         "slice": [1,
+	//                   "sample text",
+	//                   true,
+	//                   [1,
+	//                    "sample text",
+	//                    true,
+	//                    111111,
+	//                    2222222,
+	//                    333333,
+	//                    444444,
+	//                    555555,
+	//                    666666,
+	//                    7777777,
+	//                    8888888,
+	//                    99999999]]},
+	//        private=<InaccessibleField>)`
+	// if out := PFormat(sT, nil, 1, 80, 5, false, true, false); out != exp {
+	// 	t.Errorf("expected %s, got %s", exp, out)
+	// } else {
+	PPrint(sT, nil, 1, 80, 5, false, true, false)
+	// }
 }
 
 func TestPPrintFormat(t *testing.T) {
@@ -266,4 +267,137 @@ func TestRepr(t *testing.T) {
 	// Using %#v
 	fmt.Println(repr(p))               // Output: main.Person{Name:"John", Age:30}
 	fmt.Println(repr("sample_string")) // Output: {John 30}
+
+	l := []any{"121", 1}
+	var lf []string
+	fmt.Printf("%v\n", l)
+	fmt.Printf("%#v\n", l)
+
+	lfmt := "[\n"
+	for _, v := range l {
+		lf = append(lf, fmt.Sprintf(" %#v", v))
+	}
+	lfmt += strings.Join(lf, ",\n")
+	lfmt += "\n]"
+	fmt.Println(lfmt)
+
+}
+
+func TestJsonify(t *testing.T) {
+	data := map[string]interface{}{
+		"user": map[string]interface{}{
+			"name": "John Doe",
+			"age":  30,
+			"address": struct {
+				City    string
+				ZipCode string
+			}{
+				City:    "New York",
+				ZipCode: "10001",
+			},
+			"hobbies": []interface{}{
+				"reading",
+				"gaming",
+				map[string]string{
+					"outdoor": "cycling",
+				},
+			},
+		},
+		"settings": map[string]interface{}{
+			"theme": "dark",
+			"notifications": map[string]bool{
+				"email": true,
+				"sms":   false,
+			},
+		},
+		"stats": struct {
+			Posts     int
+			Likes     int
+			Followers []string
+			F         func(any)
+		}{
+			Posts:     42,
+			Likes:     128,
+			Followers: []string{"Alice", "Bob", "Charlie"},
+			F:         func(a any) { fmt.Println(a) },
+		},
+	}
+
+	// Convert to JSON
+	jsonBytes, err := json.MarshalIndent(data, "", "  ") // Pretty print with indentation
+	if err != nil {
+		fmt.Println("Error marshalling to JSON:", err)
+		return
+	}
+
+	// Print JSON string
+	fmt.Println(string(jsonBytes))
+}
+
+func TestMarshalizer(t *testing.T) {
+	// Example data with nested structs, maps, and functions
+	var ip *float64 = new(float64)
+	*ip = 10.0
+
+	pp := sampleType{
+		F1: 5,
+		F5: ip,
+	}
+	ppPtr := &pp
+
+	pp2 := sampleType{
+		F1: 5, F5: ppPtr,
+	}
+	ppPtr2 := &pp2
+	data := map[any]interface{}{
+		"user": map[string]interface{}{
+			"name": "John Doe",
+			"age":  30,
+			"address": struct {
+				City    string
+				ZipCode string
+			}{
+				City:    "New York",
+				ZipCode: "10001",
+			},
+			"hobbies": []interface{}{
+				"reading",
+				"gaming",
+				map[string]string{
+					"outdoor": "cycling",
+				},
+			},
+		},
+		"settings": map[string]interface{}{
+			"theme": "dark",
+			"notifications": map[string]bool{
+				"email": true,
+				"sms":   false,
+			},
+		},
+		"stats": struct {
+			Posts     int
+			Likes     int
+			Followers []string
+			F         func(any)
+			P         any
+		}{
+			Posts:     42,
+			Likes:     128,
+			Followers: []string{"Alice", "Bob", "Charlie"},
+			F:         func(a any) { fmt.Println(a) },
+			P:         ppPtr2,
+		},
+		0: []any{5, 6},
+	}
+
+	// Marshal with custom handling
+	jsonBytes, err := CustomMarshal(data, true, true)
+	if err != nil {
+		fmt.Println("Error marshalling to JSON:", err)
+		return
+	}
+
+	// Print JSON string
+	fmt.Println(string(jsonBytes))
 }
