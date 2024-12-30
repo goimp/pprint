@@ -124,26 +124,26 @@ type PrettyPrinter struct {
 }
 
 type PrettyPrinterInterface interface {
-	PPrint(object any)                                                                                    // +
-	PFormat(object any) string                                                                            // +
-	IsRecursive(object any) bool                                                                          // +
-	IsReadable(object any) bool                                                                           // +
-	format(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)       // +
-	pprintStruct(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dataclass
-	pprintMap(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)    // pprint_dict
-	// pprintSlice(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_list / pprint_tuple / print_set
+	PPrint(object any)                                                                              // +
+	PFormat(object any) string                                                                      // +
+	IsRecursive(object any) bool                                                                    // +
+	IsReadable(object any) bool                                                                     // +
+	format(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // +
+	// pprintStruct(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dataclass
+	pprintMap(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)   // pprint_dict
+	pprintSlice(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_list / pprint_tuple / print_set
 	// pprintString(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_string
 	// pprintBytes(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_bytes / pprint_bytearray
 	// pprintMappingProxy(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_bytes / _pprint_mappingproxy
 	// pprintSimpleNameSpace(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_bytes / _pprint_simplenamespace
 
-	formatMapItems(object []map[any]any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dict
+	formatMapItems(items []MapItem, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dict
 	//	formatNameSpaceItems(items []map[any]any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dict
-	//	formatItems(items []map[any]any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dict
+	formatItems(object []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // pprint_dict
 
-	repr(object any, context map[uintptr]int, level int) string                                                                                  // +
-	Format(object any, context map[uintptr]int, maxLevels, level int) (string, bool, bool)                                                       // +
-	pprintDefaultMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // -
+	repr(object any, context map[uintptr]int, level int) string                            // +
+	Format(object any, context map[uintptr]int, maxLevels, level int) (string, bool, bool) // +
+	// pprintDefaultMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) // -
 	// pprintCounter(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)
 	// pprintChainMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)
 	// pprintDeque(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int)
@@ -163,9 +163,10 @@ func getType[T any]() reflect.Type {
 }
 
 func init() {
-	defaultDispatchMap[reflect.TypeOf((*struct{})(nil)).Elem()] = PrettyPrinter.pprintStruct
+	// defaultDispatchMap[reflect.TypeOf((*struct{})(nil)).Elem()] = PrettyPrinter.pprintStruct
 	// defaultDispatchMap["[]any"] = PrettyPrinter.pprintSlice
-	defaultDispatchMap[reflect.TypeOf(map[any]any{})] = PrettyPrinter.pprintMap
+	// defaultDispatchMap[reflect.TypeOf(map[any]any{})] = PrettyPrinter.pprintMap
+	defaultDispatchMap[reflect.TypeOf([]any{})] = PrettyPrinter.pprintSlice
 
 	builtinScalars = []any{
 		getType[bool](),
@@ -245,6 +246,11 @@ func (pp PrettyPrinter) IsReadable(object any) bool {
 func (pp PrettyPrinter) format(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
 	// Get the unique id of the object (using reflect to simulate id)
 	objectId := getObjectId(object)
+
+	if context == nil {
+		context = make(map[uintptr]int)
+	}
+
 	if _, exists := context[objectId]; exists {
 		io.WriteString(stream, recursion(object))
 		// Recursion detected
@@ -262,64 +268,121 @@ func (pp PrettyPrinter) format(object any, stream io.Writer, indent, allowance i
 	if len(rep) > maxWidth {
 
 		p, exists := pp.dispatchMap[reflect.TypeOf(object)]
-		fmt.Println(p, exists)
+		// fmt.Println(p, exists)
 
-		// // If object is wide, we need to dispatch for special handling (e.g., handling dataclasses)
-		// // Here we check if the object is a struct (similar to dataclass in Python)
-		// if reflect.TypeOf(object).Kind() == reflect.Struct {
-		// 	// For structs (dataclass-like objects), we handle them specially
-		// 	pp.pprintStruct(object, stream, indent, allowance, context, level+1)
-		// 	return
-		// }
+		if exists {
+			context[objectId] = 1
+			p(pp, object, stream, indent, allowance, context, level+1)
+			delete(context, objectId)
+			return
+		}
 	}
 
 	// Write the normal representation to the stream
-	_, _ = stream.Write([]byte(rep))
+	io.WriteString(stream, rep)
 }
 
-// formatMapItems formats each item of the dictionary (key-value pair)
-func (pp PrettyPrinter) formatMapItems(items []map[any]any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
-	for _, item := range items {
-		for k, v := range item {
-			// Format each key-value pair by calling the _format method (simplified)
-			// You would replace this with the actual formatting logic you want
-			io.WriteString(stream, fmt.Sprintf("\n%s: %v", k, v))
-		}
-	}
+type MapItem struct {
+	Key   any
+	Value any
 }
 
-// pprintMap formats the dictionary as a string
 func (pp PrettyPrinter) pprintMap(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
-	_object := object.(map[any]any)
 	io.WriteString(stream, "{")
 	if pp.indentPerLevel > 1 {
-		io.WriteString(stream, fmt.Sprintf("%*s", pp.indentPerLevel-1, " "))
+		io.WriteString(stream, strings.Repeat(" ", pp.indentPerLevel-1))
 	}
-	length := len(_object)
-	if length > 0 {
-		// Sort dictionary items if required
-		var items []map[any]any
-		for k, v := range _object {
-			items = append(items, map[any]any{k: v})
+
+	if mapping, ok := object.(map[any]any); ok {
+		length := len(mapping)
+		if length > 0 {
+
+			var items []MapItem
+
+			for key, value := range mapping {
+				items = append(items, MapItem{Key: key, Value: value})
+			}
+
+			// FIXME:
+			// if pp.sortDicts {
+			// 	items = sort.Slice(mapping, safeKey)
+			// }
+			pp.formatMapItems(items, stream, indent, allowance+1, context, level)
+		}
+	}
+
+	io.WriteString(stream, "}")
+}
+
+func (pp PrettyPrinter) formatMapItems(items []MapItem, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
+	indent += pp.indentPerLevel
+	delimnl := ",\n" + strings.Repeat(" ", indent)
+	lastIndex := len(items) - 1
+	for i, item := range items {
+		last := i == lastIndex
+		rep := pp.repr(item.Key, context, level)
+		io.WriteString(stream, rep)
+		io.WriteString(stream, ": ")
+		if !last {
+			allowance = 1
+		}
+		pp.format(item.Value, stream, indent+len(rep)+2, allowance, context, level)
+	}
+}
+
+func (pp PrettyPrinter) pprintSlice(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
+	// Write the opening bracket for the slice
+	io.WriteString(stream, "[")
+	// Ensure the object is a slice, then call formatItems to handle the items
+	if slice, ok := object.([]any); ok {
+		pp.formatItems(slice, stream, indent, allowance+1, context, level)
+	}
+	// Write the closing bracket for the slice
+	io.WriteString(stream, "]")
+}
+
+func (pp PrettyPrinter) formatItems(items []any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
+	// Increase indent for the next level
+	indent += pp.indentPerLevel
+	if pp.indentPerLevel > 1 {
+		io.WriteString(stream, fmt.Sprintf("%*s", pp.indentPerLevel-1, ""))
+	}
+
+	delimnl := ",\n" + fmt.Sprintf("%*s", indent, "")
+	delim := ""
+	width := pp.width - indent + 1
+	maxWidth := width
+
+	for i, ent := range items {
+		// Check if it's the last item
+		last := i == len(items)-1
+		if last {
+			maxWidth -= allowance
+			width -= allowance
 		}
 
-		if pp.sortDicts {
-			// Sorting items based on the keys
-			sort.SliceStable(items, func(i, j int) bool {
-				// Sort by the key (extract the key and compare)
-				for k1 := range items[i] {
-					for k2 := range items[j] {
-						return fmt.Sprintf("%v", k1) < fmt.Sprintf("%v", k2)
-					}
+		if pp.compact {
+			rep := pp.repr(ent, context, level)
+			w := len(rep) + 2
+			if width < w {
+				width = maxWidth
+				if delim != "" {
+					delim = delimnl
 				}
-				return false
-			})
+			}
+			if width >= w {
+				width -= w
+				io.WriteString(stream, delim)
+				delim = ", "
+				io.WriteString(stream, rep)
+				continue
+			}
 		}
 
-		// Format the dictionary items
-		pp.formatMapItems(items, stream, indent, allowance+1, context, level)
+		io.WriteString(stream, delim)
+		delim = delimnl
+		pp.format(ent, stream, indent, allowance, context, level)
 	}
-	io.WriteString(stream, "\n}")
 }
 
 func copyMap(original map[uintptr]int) map[uintptr]int {
@@ -334,12 +397,12 @@ func copyMap(original map[uintptr]int) map[uintptr]int {
 	return copy
 }
 
-// pprintStruct is a helper method to handle structs like dataclasses in Python
-func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
-	// This would handle special printing for struct-like objects (dataclass equivalent)
-	// Here, we are just printing the struct as-is for simplicity
-	_, _ = stream.Write([]byte(fmt.Sprintf("%+v", object)))
-}
+// // pprintStruct is a helper method to handle structs like dataclasses in Python
+// func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
+// 	// This would handle special printing for struct-like objects (dataclass equivalent)
+// 	// Here, we are just printing the struct as-is for simplicity
+// 	_, _ = stream.Write([]byte(fmt.Sprintf("%+v", object)))
+// }
 
 // repr simulates the Python's repr function that returns a string representation of the object.
 func (pp PrettyPrinter) repr(object any, context map[uintptr]int, level int) string {
@@ -355,30 +418,6 @@ func (pp PrettyPrinter) repr(object any, context map[uintptr]int, level int) str
 
 func (pp PrettyPrinter) Format(object any, context map[uintptr]int, maxLevels, level int) (string, bool, bool) {
 	return pp.safeRepr(object, context, maxLevels, level)
-}
-
-func (pp PrettyPrinter) pprintDefaultMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context map[uintptr]int, level int) {
-
-	// Handle empty dictionary
-	if len(object) == 0 {
-		io.WriteString(stream, fmt.Sprintf("%v", object))
-		return
-	}
-
-	// // Get the "default_factory" equivalent
-	// rdf := fmt.Sprintf("%v", defaultFactory)
-
-	// Print the class name and default factory
-	clsName := "map"           // Using "map" for Go's default type
-	indent += len(clsName) + 1 // Adjust indentation for the class name
-
-	// io.WriteString(stream, fmt.Sprintf("%s(%s,\n%s", clsName, rdf, strings.Repeat(" ", indent)))
-
-	// Print the dictionary items
-	pp.pprintMap(object, stream, indent, allowance+1, context, level)
-
-	// Close the representation
-	io.WriteString(stream, ")")
 }
 
 func formatWithUnderscores(num int) string {
@@ -581,11 +620,12 @@ func recursion(object interface{}) string {
 
 	// Get the memory address (simulating id in Python)
 	// Use reflect.ValueOf to get the value, then convert to unsafe.Pointer
-	objectValue := reflect.ValueOf(object)
-	objectID := fmt.Sprintf("%v", unsafe.Pointer(objectValue.Pointer()))
+	// objectValue := reflect.ValueOf(object)
+	// objectID := fmt.Sprintf("%v", unsafe.Pointer(objectValue.Pointer()))
+	objectId := getObjectId(object)
 
 	// Return the formatted string similar to Python's recursion function
-	return fmt.Sprintf("<Recursion on %s with id=%s>", objectType, objectID)
+	return fmt.Sprintf("<Recursion on %s with id=%v>", objectType, objectId)
 }
 
 func wrapBytesRepr(object []byte, width, allowance int) []string {

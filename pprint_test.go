@@ -15,7 +15,7 @@ func TestPPrint(t *testing.T) {
 	f := 0.123
 	PPrint(f, nil, 1, 80, 2, false, true, false)
 
-	l := []any{1, "sample text", true}
+	l := []any{1, "sample text", true, 111111, 2222222, 333333, 444444, 555555, 666666, 7777777, 8888888, 99999999}
 	PPrint(l, nil, 1, 80, 2, false, true, false)
 
 	m := map[any]any{
