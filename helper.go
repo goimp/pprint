@@ -8,7 +8,19 @@ import (
 )
 
 func repr(object any) string {
+	if _, p := ptrToObj(object); p {
+		// fmt.Println("PTR", object, o)
+		return fmt.Sprintf("%v", reflect.TypeOf(object))
+	}
 	return fmt.Sprintf("%#v", object)
+}
+
+func ptrToObj(object any) (reflect.Value, bool) {
+	value := reflect.ValueOf(object)
+	if value.Kind() == reflect.Ptr {
+		return reflect.Indirect(value), true
+	}
+	return value, false
 }
 
 func id(object any) uintptr {

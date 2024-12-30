@@ -253,6 +253,11 @@ func (pp PrettyPrinter) formatItems(items []any, stream io.Writer, indent, allow
 func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allowance int, context Context, level int) {
 
 	value := reflect.ValueOf(object)
+
+	// if value.Kind() == reflect.Ptr {
+	// 	value = reflect.Indirect(value)
+	// }
+
 	if value.Kind() == reflect.Struct {
 		// Get the name of the struct
 		typ := reflect.TypeOf(object)
@@ -276,13 +281,8 @@ func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allow
 				})
 			} else {
 				items = append(items, StructField{
-					Name: fieldName,
-					// Entry: reprInaccessible(),
+					Name:  fieldName,
 					Entry: InaccessibleField{},
-					// Entry: "<private_field>", // Represent inaccessible fields
-					// Entry: InaccessibleField{
-					// 	Name: fieldName, Reason: "Unexported field",
-					// }, // Represent inaccessible fields
 				})
 			}
 		}

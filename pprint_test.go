@@ -43,23 +43,34 @@ func TestPPrintScalars(t *testing.T) {
 	i := 1
 	ie := "1"
 	if out := PFormat(i, nil, 1, 80, 2, false, true, false); out != ie {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", ie, out)
 	} else {
 		PPrint(i, nil, 1, 80, 2, false, true, false)
 	}
 	s := "sample string"
 	se := "\"sample string\""
 	if out := PFormat(s, nil, 1, 80, 2, false, true, false); out != se {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", se, out)
 	} else {
 		PPrint(s, nil, 1, 80, 2, false, true, false)
 	}
 	f := 0.123
 	fe := "0.123"
 	if out := PFormat(f, nil, 1, 80, 2, false, true, false); out != fe {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", fe, out)
 	} else {
 		PPrint(f, nil, 1, 80, 2, false, true, false)
+	}
+}
+
+func TestPPrintPtr(t *testing.T) {
+	var i *int = new(int)
+	*i = 1
+	exp := "*int"
+	if out := PFormat(i, nil, 1, 80, 2, false, true, false); out != exp {
+		t.Errorf("expected %s, got %s", exp, out)
+	} else {
+		PPrint(i, nil, 1, 80, 2, false, true, false)
 	}
 }
 
@@ -80,7 +91,7 @@ func TestPPrintSlice(t *testing.T) {
  99999999]`
 
 	if out := PFormat(l, nil, 1, 80, 2, false, true, false); out != exp {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", exp, out)
 	} else {
 		PPrint(l, nil, 1, 80, 2, false, true, false)
 	}
@@ -145,9 +156,21 @@ func TestPPrintStruct(t *testing.T) {
            F11=<nil>,
            private=<InaccessibleField>)`
 	if out := PFormat(sT, nil, 1, 80, 2, false, true, false); out != exp {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", exp, out)
 	} else {
 		PPrint(sT, nil, 1, 80, 2, false, true, false)
+	}
+}
+
+func TestPPrintStructPtr(t *testing.T) {
+
+	sT := createSampleType("sample_text", nil)
+	sTptr := &sT
+	exp := "*pprint.sampleType"
+	if out := PFormat(sTptr, nil, 1, 80, 2, false, true, false); out != exp {
+		t.Errorf("expected %s, got %s", exp, out)
+	} else {
+		PPrint(sTptr, nil, 1, 80, 2, false, true, false)
 	}
 }
 
@@ -195,7 +218,7 @@ func TestPPrintNested(t *testing.T) {
                        99999999]]},
            private=<InaccessibleField>)`
 	if out := PFormat(sT, nil, 1, 80, 5, false, true, false); out != exp {
-		t.Errorf("expected 1, got %s", out)
+		t.Errorf("expected %s, got %s", exp, out)
 	} else {
 		PPrint(sT, nil, 1, 80, 5, false, true, false)
 	}
