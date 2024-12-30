@@ -131,8 +131,19 @@ func (pp PrettyPrinter) format(object any, stream io.Writer, indent, allowance i
 		return
 	}
 
-	// Get the string representation of the object
-	rep := pp.repr(object, context, level)
+	rep := ""
+	value := reflect.ValueOf(object)
+	if value.Kind() == reflect.Pointer {
+		fmt.Println("POINTER")
+		value := reflect.Indirect(value).Interface()
+		// fmt.Println(value)
+		io.WriteString(stream, fmt.Sprintf("%s(%#x)", "&", objectId))
+		indent += len(fmt.Sprintf("%s(%#x)", "&", objectId))
+		pp.format(value, stream, indent, allowance, context, level)
+	} else {
+		// Get the string representation of the object
+		rep = pp.repr(object, context, level)
+	}
 
 	// Check if the representation exceeds the max width
 	maxWidth := pp.width - indent - allowance
@@ -253,10 +264,6 @@ func (pp PrettyPrinter) formatItems(items []any, stream io.Writer, indent, allow
 func (pp PrettyPrinter) pprintStruct(object any, stream io.Writer, indent, allowance int, context Context, level int) {
 
 	value := reflect.ValueOf(object)
-
-	// if value.Kind() == reflect.Ptr {
-	// 	value = reflect.Indirect(value)
-	// }
 
 	if value.Kind() == reflect.Struct {
 		// Get the name of the struct
