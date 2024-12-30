@@ -54,7 +54,7 @@ func formatWithUnderscores(num int) string {
 	return sb.String()
 }
 
-func recursion(object interface{}) string {
+func recursion(object any) string {
 	// Get the type of the object
 	objectType := reflect.TypeOf(object).Name()
 
