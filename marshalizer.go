@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // CustomMarshal replaces unsupported types with string descriptors and controls HTML escaping.
@@ -122,22 +123,45 @@ func serializeUnsupported(v interface{}, includePrivateFields bool) interface{} 
 
 			// Get parameter types of the function (if any)
 			numParams := funcType.NumIn()
-			paramTypes := make([]string, numParams)
+			// paramTypes := make([]string, numParams)
+			paramTypes := []string{}
 			for i := 0; i < numParams; i++ {
-				paramTypes[i] = funcType.In(i).String()
+				// paramTypes[i] = funcType.In(i).String()
+				if typestring := funcType.In(i).String(); len(typestring) > 0 {
+					// paramTypes[i] = typestring
+					paramTypes = append(paramTypes, removeSpaces(typestring))
+				}
 			}
 
-			// Get return type if available
-			var returnType string
-			if funcType.NumOut() > 0 {
-				returnType = funcType.Out(0).String()
+			// // Get return type if available
+			// var returnType string
+			// if funcType.NumOut() > 0 {
+			// 	returnType = funcType.Out(0).String()
+			// }
+
+			numReturns := funcType.NumOut()
+			// returnTypes := make([]string, numParams)
+			returnTypes := []string{}
+			for i := 0; i < numReturns; i++ {
+				if typestring := funcType.Out(i).String(); len(typestring) > 0 {
+					// returnTypes[i] = typestring
+					paramTypes = append(paramTypes, removeSpaces(typestring))
+				}
 			}
 
-			// Create a descriptor string that includes the function name, parameter types, and return type if any
-			if returnType != "" {
-				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
-			} else {
+			// // Create a descriptor string that includes the function name, parameter types, and return type if any
+			// if returnType != "" {
+			// 	return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
+			// } else {
+			// 	return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
+			// }
+
+			if len(returnTypes) == 0 {
 				return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
+			} else if len(returnTypes) == 1 {
+				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), joinTypes(returnTypes))
+			} else {
+				return fmt.Sprintf("func(%s) (%s)", joinTypes(paramTypes), joinTypes(returnTypes))
 			}
 		}
 		// Return the value directly for supported types
@@ -150,7 +174,12 @@ func joinTypes(types []string) string {
 	if len(types) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s", types)
+	return strings.Join(types, ", ")
+}
+
+// Function to clean up spaces between type names
+func removeSpaces(typeStr string) string {
+	return strings.ReplaceAll(typeStr, " ", "")
 }
 
 // // ---------------------------------------------------------------------------------------------------------

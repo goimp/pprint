@@ -379,14 +379,24 @@ func TestMarshalizer(t *testing.T) {
 			Posts     int
 			Likes     int
 			Followers []string
-			F         func(any)
+			F         func(any, int)
 			P         any
 		}{
 			Posts:     42,
 			Likes:     128,
 			Followers: []string{"Alice", "Bob", "Charlie"},
-			F:         func(a any) { fmt.Println(a) },
+			F:         func(a any, b int) { fmt.Println(a) },
 			P:         ppPtr2,
+		},
+		"stats2": struct {
+			F func(any, int) string
+		}{
+			F: func(a any, b int) string { return "" },
+		},
+		"stats3": struct {
+			F func(any, int) (string, error)
+		}{
+			F: func(a any, b int) (string, error) { return "", nil },
 		},
 		0: []any{5, 6},
 	}
