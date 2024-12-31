@@ -19,7 +19,7 @@ import (
 
 type Serializer func(val reflect.Value, mr Marshalizer) any
 
-type MarshalizerContext map[uintptr]string
+type MarshalizerContext map[uintptr]int
 
 func (ctx MarshalizerContext) Contains(objectId uintptr) bool {
 	_, exists := ctx[objectId]
@@ -27,7 +27,7 @@ func (ctx MarshalizerContext) Contains(objectId uintptr) bool {
 }
 
 func (ctx MarshalizerContext) Set(objectId uintptr) {
-	ctx[objectId] = "1"
+	ctx[objectId] = 1
 }
 
 func (ctx MarshalizerContext) Del(objectId uintptr) {
@@ -173,6 +173,7 @@ func serialize(object any, mr Marshalizer) any {
 
 	objectId := id(object)
 	if mr.context.Contains(objectId) {
+		// return fmt.Sprintf("(%T=%p)[Recursion Exceeded]", object, object)
 		return fmt.Sprintf("(%T=%p)[Recursion Exceeded]", object, object)
 	}
 
