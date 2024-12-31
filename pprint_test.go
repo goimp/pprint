@@ -334,6 +334,10 @@ func TestJsonify(t *testing.T) {
 	fmt.Println(string(jsonBytes))
 }
 
+func TempFunc(a any, b int) string {
+	return ""
+}
+
 func TestMarshalizer(t *testing.T) {
 	// Example data with nested structs, maps, and functions
 	var ip *float64 = new(float64)
@@ -391,7 +395,7 @@ func TestMarshalizer(t *testing.T) {
 		"stats2": struct {
 			F func(any, int) string
 		}{
-			F: func(a any, b int) string { return "" },
+			F: TempFunc,
 		},
 		"stats3": struct {
 			F func(any, int) (string, error)
@@ -402,7 +406,7 @@ func TestMarshalizer(t *testing.T) {
 	}
 
 	// Marshal with custom handling
-	jsonBytes, err := CustomMarshal(data, true, true)
+	jsonBytes, err := NewMarshalizer(true, false).Serialize(data)
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 		return
