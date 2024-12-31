@@ -21,6 +21,19 @@ type Serializer func(val reflect.Value, mr Marshalizer) any
 
 type MarshalizerContext map[uintptr]string
 
+func (ctx MarshalizerContext) Contains(objectId uintptr) bool {
+	_, exists := ctx[objectId]
+	return exists
+}
+
+func (ctx MarshalizerContext) Set(objectId uintptr) {
+	ctx[objectId] = "1"
+}
+
+func (ctx MarshalizerContext) Del(objectId uintptr) {
+	delete(ctx, objectId)
+}
+
 type MarshalizerInterface interface {
 	Serialize(object any) ([]byte, error)
 }
@@ -158,27 +171,28 @@ func serialize(object any, mr Marshalizer) any {
 		return nil
 	}
 
-	if _, exists := mr.context[id(object)]; exists {
+	objectId := id(object)
+	if mr.context.Contains(objectId) {
 		return fmt.Sprintf("(%T=%p)[Recursion Exceeded]", object, object)
 	}
 
-	mr.context[id(object)] = "1"
+	mr.context.Set(objectId)
 
 	val := reflect.ValueOf(object)
 
 	if serializer, exists := mr.registry.typeSerializers[val.Type()]; exists {
 		r := serializer(val, mr)
-		delete(mr.context, id(object))
+		mr.context.Del(objectId)
 		return r
 	}
 
 	if serializer, exists := mr.registry.kindSerializers[val.Kind()]; exists {
 		r := serializer(val, mr)
-		delete(mr.context, id(object))
+		mr.context.Del(objectId)
 		return r
 	}
 
-	delete(mr.context, id(object))
+	mr.context.Del(objectId)
 
 	return object
 }
@@ -244,7 +258,7 @@ func SerializeStruct(val reflect.Value, mr Marshalizer) any {
 		if !field.CanInterface() {
 			// optional
 			if mr.includePrivateFields {
-				m[fieldType.Name] = "[private]"
+				m[fieldType.Name] = "[Private Field]"
 			}
 			continue // Skip unexported fields
 		}
