@@ -41,6 +41,7 @@ func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bo
 		registry.AddKind(reflect.Pointer, SerializePointer)
 
 		registry.AddKnownInterface(reflect.TypeOf((*fmt.Stringer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*error)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
 	}
 
