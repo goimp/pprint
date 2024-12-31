@@ -158,15 +158,27 @@ func serialize(object any, mr Marshalizer) any {
 		return nil
 	}
 
+	if _, exists := mr.context[id(object)]; exists {
+		return fmt.Sprintf("(%T=%p)[Recursion Exceeded]", object, object)
+	}
+
+	mr.context[id(object)] = "1"
+
 	val := reflect.ValueOf(object)
 
 	if serializer, exists := mr.registry.typeSerializers[val.Type()]; exists {
-		return serializer(val, mr)
+		r := serializer(val, mr)
+		delete(mr.context, id(object))
+		return r
 	}
 
 	if serializer, exists := mr.registry.kindSerializers[val.Kind()]; exists {
-		return serializer(val, mr)
+		r := serializer(val, mr)
+		delete(mr.context, id(object))
+		return r
 	}
+
+	delete(mr.context, id(object))
 
 	return object
 }
