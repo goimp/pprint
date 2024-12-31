@@ -422,7 +422,8 @@ func TestMarshalizer(t *testing.T) {
 	}
 
 	// Marshal with custom handling
-	jsonBytes, err := NewMarshalizer(true, false, false, true).Serialize(data)
+	mr := NewMarshalizer(true, false, false, true)
+	jsonBytes, err := mr.Serialize(data)
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 		return
@@ -432,5 +433,43 @@ func TestMarshalizer(t *testing.T) {
 	fmt.Println(string(jsonBytes))
 
 	PPrint(data, nil, 1, 80, 5, false, true, false)
+
+}
+
+func TestMarshalizerRecursion(t *testing.T) {
+
+	testStr := createSampleType("1", nil)
+	ptr := &testStr
+	testStr.F5 = ptr
+
+	data := map[any]any{
+		"item1": map[any]any{
+			"item2": ptr,
+			"item3": map[any]any{
+				"item4": 5,
+			},
+		},
+	}
+	mr := NewMarshalizer(true, false, false, true)
+	mr.Serialize(data)
+
+	// context := mr.(*Marshalizer).context
+	// fmt.Println(context)
+
+	// var prev MarshalizerContext = make(MarshalizerContext)
+	// for key, val := range context {
+	// 	if _, exists := prev[key]; exists {
+	// 		fmt.Println("Detected recursion", key, val)
+	// 	}
+	// 	prev[key] = val
+	// }
+
+	jsonBytes, err := mr.Serialize(data)
+	if err != nil {
+		fmt.Println("Error marshalling to JSON:", err)
+		return
+	}
+
+	fmt.Println(string(jsonBytes))
 
 }
