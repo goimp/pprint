@@ -3,11 +3,15 @@
 package pprint
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 )
 
 type Serializer func(val reflect.Value, mr Marshalizer) any
@@ -41,7 +45,18 @@ func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bo
 		registry.AddKind(reflect.Pointer, SerializePointer)
 
 		registry.AddKnownInterface(reflect.TypeOf((*fmt.Stringer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Scanner)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Formatter)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*error)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Reader)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Writer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Closer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriter)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*sync.Locker)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.WaitGroup)(nil)).Elem()) // raises panic
+		registry.AddKnownInterface(reflect.TypeOf((*context.Context)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*sort.Interface)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
 	}
 
