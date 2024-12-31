@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"reflect"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"testing"
 )
 
 type Serializer func(val reflect.Value, mr Marshalizer) any
@@ -53,10 +56,30 @@ func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bo
 		registry.AddKnownInterface(reflect.TypeOf((*io.Closer)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriter)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*io.ReadSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Seeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.WriteSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriteSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriteCloser)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.WriterAt)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReaderAt)(nil)).Elem())
 		registry.AddKnownInterface(reflect.TypeOf((*sync.Locker)(nil)).Elem())
-		// registry.AddKnownInterface(reflect.TypeOf((*sync.WaitGroup)(nil)).Elem()) // raises panic
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.Mutex)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.RWMutex)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.Atomic)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.WaitGroup)(nil)).Elem()) // non interface
+		registry.AddKnownInterface(reflect.TypeOf((*http.RoundTripper)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*http.Handler)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*http.ServeHTTP)(nil)).Elem()) // unimplemented ?
 		registry.AddKnownInterface(reflect.TypeOf((*context.Context)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*context.CancelFunc)(nil)).Elem()) // non interface
 		registry.AddKnownInterface(reflect.TypeOf((*sort.Interface)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*testing.TB)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*sql.Scanner)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*sql.Valuer)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*strconv.NumError)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*os.File)(nil)).Elem()) // non interface
+		registry.AddKnownInterface(reflect.TypeOf((*net.Conn)(nil)).Elem())
+
 		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
 	}
 
