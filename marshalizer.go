@@ -192,9 +192,15 @@ func SerializePointer(val reflect.Value, mr Marshalizer) any {
 		// Add pointer metadata to the map
 		value.(map[string]any)["*"] = ptrData
 		return value
+	} else {
+		output := map[string]any{
+			"*":      ptrData,
+			"_value": value,
+		}
+		return output
 	}
 	// If it's not a map, just return the value as is
-	return value
+	// return value
 }
 
 // DiscoverInterfaces dynamically finds all interfaces implemented by a given struct.
