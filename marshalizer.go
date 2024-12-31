@@ -13,18 +13,9 @@ import (
 type Serializer func(val reflect.Value, mr Marshalizer) any
 
 type MarshalizerContext map[uintptr]string
-type KindSerializerMap map[reflect.Kind]Serializer
-type TypeSerializerMap map[reflect.Type]Serializer
 
 type MarshalizerInterface interface {
 	Serialize(object any) ([]byte, error)
-	AddKind(kind reflect.Kind, serializer Serializer)
-	RemoveKind(kind reflect.Kind)
-}
-
-type SerializersRegistry struct {
-	kindSerializers KindSerializerMap
-	typeSerializers TypeSerializerMap
 }
 
 type Marshalizer struct {
@@ -34,20 +25,24 @@ type Marshalizer struct {
 	registry             SerializersRegistry
 }
 
-func NewMarshalizer(includePrivateFields bool, escapeHTML bool) MarshalizerInterface {
+func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bool) MarshalizerInterface {
 
-	// if registry == nil {
 	registry := SerializersRegistry{
 		kindSerializers: make(KindSerializerMap),
 		typeSerializers: make(TypeSerializerMap),
+		knownInterfaces: make(KnownInterface),
 	}
-	registry.kindSerializers[reflect.Slice] = SerializeSlice
-	registry.kindSerializers[reflect.Map] = SerializeMap
-	registry.kindSerializers[reflect.Struct] = SerializeStruct
-	registry.kindSerializers[reflect.Func] = SerializeFuncSignature
-	registry.kindSerializers[reflect.Pointer] = SerializePointer
 
-	// }
+	if !emptyRegistry {
+		registry.AddKind(reflect.Slice, SerializeSlice)
+		registry.AddKind(reflect.Map, SerializeMap)
+		registry.AddKind(reflect.Struct, SerializeStruct)
+		registry.AddKind(reflect.Func, SerializeFuncSignature)
+		registry.AddKind(reflect.Pointer, SerializePointer)
+
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Stringer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
+	}
 
 	mr := &Marshalizer{
 		context:              make(MarshalizerContext),
@@ -57,6 +52,14 @@ func NewMarshalizer(includePrivateFields bool, escapeHTML bool) MarshalizerInter
 	}
 
 	return mr
+}
+
+func (mr Marshalizer) String() string {
+	result, err := mr.Serialize(mr)
+	if err != nil {
+		panic("can't serialize Marshalizer itself")
+	}
+	return string(result)
 }
 
 func (mr Marshalizer) Serialize(object any) ([]byte, error) {
@@ -84,17 +87,27 @@ func (mr Marshalizer) Serialize(object any) ([]byte, error) {
 }
 
 func (mr Marshalizer) AddKind(kind reflect.Kind, serializer Serializer) {
-	if _, exists := mr.registry.kindSerializers[kind]; exists {
-		panic(fmt.Sprintf("kind %s already registered", kind))
-	}
-	mr.registry.kindSerializers[kind] = serializer
+	mr.registry.AddKind(kind, serializer)
 }
 
 func (mr Marshalizer) RemoveKind(kind reflect.Kind) {
-	if _, exists := mr.registry.kindSerializers[kind]; !exists {
-		panic(fmt.Sprintf("kind %s not in registry", kind))
-	}
-	delete(mr.registry.kindSerializers, kind)
+	mr.registry.RemoveKind(kind)
+}
+
+func (mr Marshalizer) AddType(typ reflect.Type, serializer Serializer) {
+	mr.registry.AddType(typ, serializer)
+}
+
+func (mr Marshalizer) RemoveType(typ reflect.Type) {
+	mr.registry.RemoveType(typ)
+}
+
+func (mr Marshalizer) AddKnownInterface(typ reflect.Type) {
+	mr.registry.AddKnownInterface(typ)
+}
+
+func (mr Marshalizer) RemoveKnownInterface(typ reflect.Type) {
+	mr.registry.RemoveKnownInterface(typ)
 }
 
 // serialize replaces unsupported types like functions with string descriptors.
@@ -122,11 +135,14 @@ func SerializePointer(val reflect.Value, mr Marshalizer) any {
 		return nil
 	}
 
+	interfaces := GetImplementedInterfacesDescriptor(val, mr)
+
 	// Create a structure for pointers
 	ptrData := map[string]any{
 		"address": fmt.Sprintf("%p", val.Interface()), // Pointer address
 		// "address": id(val.Interface()),                // Pointer address
-		"type": fmt.Sprintf("%T", val.Interface()), // Pointer type
+		"type":       fmt.Sprintf("%T", val.Interface()), // Pointer type
+		"implements": interfaces,
 	}
 
 	// Serialize the dereferenced value first
@@ -140,6 +156,20 @@ func SerializePointer(val reflect.Value, mr Marshalizer) any {
 	}
 	// If it's not a map, just return the value as is
 	return value
+}
+
+// DiscoverInterfaces dynamically finds all interfaces implemented by a given struct.
+func DiscoverInterfaces(structType reflect.Type, interfaces KnownInterface) []reflect.Type {
+	implemented := []reflect.Type{}
+
+	// Iterate over the known interfaces map
+	for ifaceType := range interfaces {
+		if structType.Implements(ifaceType) {
+			implemented = append(implemented, ifaceType)
+		}
+	}
+
+	return implemented
 }
 
 func SerializeStruct(val reflect.Value, mr Marshalizer) any {
@@ -200,17 +230,79 @@ func SerializeFuncSignature(val reflect.Value, mr Marshalizer) any {
 		}
 	}
 
-	// Construct the signature
-	paramList := strings.Join(params, ", ")
-	resultList := strings.Join(results, ", ")
-
 	// resolve func name
 	funcName := runtime.FuncForPC(val.Pointer()).Name()
 
+	return joinFuncSignature(funcName, params, results)
+}
+
+func SerializeMethodSignature(method reflect.Method, mr Marshalizer) string {
+	// Access the method's type
+	methodType := method.Type
+	methodName := method.Name
+	// Get parameter types (excluding the receiver)
+	params := []string{}
+	for i := 1; i < methodType.NumIn(); i++ { // Skip the first parameter, which is the receiver
+		paramType := methodType.In(i).String()
+		params = append(params, removeSpaces(paramType))
+	}
+
+	// Get return types
+	results := []string{}
+	for i := 0; i < methodType.NumOut(); i++ {
+		resultType := methodType.Out(i).String()
+		results = append(results, removeSpaces(resultType))
+	}
+
+	return joinFuncSignature(methodName, params, results)
+}
+
+func GetImplementedInterfacesDescriptor(val reflect.Value, mr Marshalizer) map[string][]string {
+	implementedInterfaces := DiscoverInterfaces(val.Type(), mr.registry.knownInterfaces)
+
+	serializedInterfaces := map[string][]string{}
+
+	if len(implementedInterfaces) > 0 {
+		for _, intf := range implementedInterfaces {
+			// if serializedInterface := GetInterfaceDescriptor(intf, mr); serializedInterface != nil {
+			// 	serializedInterfaces[intf.String()] = serializedInterface
+			// }
+			serializedInterfaces[intf.String()] = GetInterfaceDescriptor(intf, mr)
+		}
+	}
+	if len(serializedInterfaces) > 0 {
+		return serializedInterfaces
+	}
+	return nil
+}
+
+func GetInterfaceDescriptor(typ reflect.Type, mr Marshalizer) []string {
+	if typ.Kind() == reflect.Interface {
+		// If the interface is not nil, inspect the methods implemented by it
+		methods := []string{}
+
+		// Loop through all methods of the interface
+		numMethods := typ.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			method := typ.Method(i)
+
+			// Handle the method signature separately
+			methodSignature := SerializeMethodSignature(method, mr)
+			methods = append(methods, methodSignature)
+		}
+		return methods
+	}
+	return nil
+}
+
+func joinFuncSignature(name string, params, results []string) string {
 	signature := ""
 
-	if len(funcName) > 0 {
-		signature += cleanFuncName(funcName) + " "
+	paramList := strings.Join(params, ", ")
+	resultList := strings.Join(results, ", ")
+
+	if len(name) > 0 {
+		signature += cleanFuncName(name) + " "
 	}
 
 	signature += fmt.Sprintf("func(%s)", paramList)

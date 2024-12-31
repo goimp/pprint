@@ -353,6 +353,9 @@ func TestMarshalizer(t *testing.T) {
 		F1: 5, F5: ppPtr,
 	}
 	ppPtr2 := &pp2
+
+	marsh := NewMarshalizer(true, false, false)
+
 	data := map[any]interface{}{
 		"user": map[string]interface{}{
 			"name": "John Doe",
@@ -402,11 +405,13 @@ func TestMarshalizer(t *testing.T) {
 		}{
 			F: func(a any, b int) (string, error) { return "", nil },
 		},
-		0: []any{5, 6},
+		0:              []any{5, 6},
+		"marshalizer":  marsh,
+		"marshalizer2": marsh.(*Marshalizer),
 	}
 
 	// Marshal with custom handling
-	jsonBytes, err := NewMarshalizer(true, false).Serialize(data)
+	jsonBytes, err := NewMarshalizer(true, false, false).Serialize(data)
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 		return
