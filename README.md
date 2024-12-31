@@ -7,8 +7,3 @@ go get github.com/goimp/pprint
 ```
 
 #### [Docs can be found there](https://pkg.go.dev/github.com/goimp/pprint)
-
-
-#### Todo:
-* sortMap (safeKey)
-* pprintBytes

@@ -51,6 +51,16 @@ func TestPPrintScalars(t *testing.T) {
 	} else {
 		PPrint(f, nil, 1, 80, 2, false, true, false)
 	}
+
+	b := []byte{15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100}
+	be := `(0f141e2832640f141e283264
+0f141e2832640f141e283264
+0f141e283264)`
+	if out := PFormat(b, nil, 1, 80, 2, false, true, false); out != be {
+		t.Errorf("expected %s, got %s", be, out)
+	} else {
+		PPrint(b, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintPtr(t *testing.T) {
@@ -420,4 +430,7 @@ func TestMarshalizer(t *testing.T) {
 
 	// Print JSON string
 	fmt.Println(string(jsonBytes))
+
+	PPrint(data, nil, 1, 80, 5, false, true, false)
+
 }
