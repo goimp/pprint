@@ -354,7 +354,8 @@ func TestMarshalizer(t *testing.T) {
 	}
 	ppPtr2 := &pp2
 
-	marsh := NewMarshalizer(true, false, false)
+	reg := &SerializersRegistry{}
+	var regintf SerializerRegistryInterface = reg
 
 	data := map[any]interface{}{
 		"user": map[string]interface{}{
@@ -406,12 +407,12 @@ func TestMarshalizer(t *testing.T) {
 			F: func(a any, b int) (string, error) { return "", nil },
 		},
 		0:              []any{5, 6},
-		"marshalizer":  marsh,
-		"marshalizer2": marsh.(*Marshalizer),
+		"marshalizer":  regintf,
+		"marshalizer2": regintf.(*SerializersRegistry),
 	}
 
 	// Marshal with custom handling
-	jsonBytes, err := NewMarshalizer(true, false, false).Serialize(data)
+	jsonBytes, err := NewMarshalizer(true, false, false, true).Serialize(data)
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 		return

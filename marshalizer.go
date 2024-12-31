@@ -29,10 +29,11 @@ type Marshalizer struct {
 	context              MarshalizerContext
 	escapeHTML           bool
 	includePrivateFields bool
+	includeImplements    bool
 	registry             SerializersRegistry
 }
 
-func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bool) MarshalizerInterface {
+func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bool, includeImplements bool) MarshalizerInterface {
 
 	registry := SerializersRegistry{
 		kindSerializers: make(KindSerializerMap),
@@ -81,12 +82,14 @@ func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bo
 		registry.AddKnownInterface(reflect.TypeOf((*net.Conn)(nil)).Elem())
 
 		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*SerializerRegistryInterface)(nil)).Elem())
 	}
 
 	mr := &Marshalizer{
 		context:              make(MarshalizerContext),
 		escapeHTML:           escapeHTML,
 		includePrivateFields: includePrivateFields,
+		includeImplements:    includeImplements,
 		registry:             registry,
 	}
 
@@ -174,14 +177,15 @@ func SerializePointer(val reflect.Value, mr Marshalizer) any {
 		return nil
 	}
 
-	interfaces := GetImplementedInterfacesDescriptor(val, mr)
-
 	// Create a structure for pointers
 	ptrData := map[string]any{
 		"address": fmt.Sprintf("%p", val.Interface()), // Pointer address
-		// "address": id(val.Interface()),                // Pointer address
-		"type":       fmt.Sprintf("%T", val.Interface()), // Pointer type
-		"implements": interfaces,
+		"type":    fmt.Sprintf("%T", val.Interface()), // Pointer type
+	}
+
+	if mr.includeImplements {
+		interfaces := GetImplementedInterfacesDescriptor(val, mr)
+		ptrData["implements"] = interfaces
 	}
 
 	// Serialize the dereferenced value first
