@@ -72,17 +72,24 @@ func recursion(object any) string {
 func wrapBytesRepr(object []byte, width, allowance int) []string {
 	var result []string
 	var current []byte
-	last := len(object) / 4 * 4
 
 	for i := 0; i < len(object); i += 4 {
-		part := object[i : i+4]
+		// Ensure the slice does not exceed the bounds of `object`
+		end := i + 4
+		if end > len(object) {
+			end = len(object)
+		}
+		part := object[i:end]
+
 		candidate := append(current, part...)
-		if i == last {
+		// Adjust width for the last segment
+		if end == len(object) {
 			width -= allowance
 		}
+		// Check if the candidate exceeds the width limit
 		if len(repr(candidate)) > width {
 			if len(current) > 0 {
-				result = append(result, repr(current))
+				result = append(result, fmt.Sprintf("%x", current))
 			}
 			current = part
 		} else {
@@ -92,7 +99,7 @@ func wrapBytesRepr(object []byte, width, allowance int) []string {
 
 	// Add the final part if there's any remaining
 	if len(current) > 0 {
-		result = append(result, repr(current))
+		result = append(result, fmt.Sprintf("%x", current))
 	}
 
 	return result

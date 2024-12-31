@@ -3,21 +3,115 @@
 package pprint
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"reflect"
+	"runtime"
+	"sort"
 	"strings"
+	"sync"
+	"testing"
 )
 
-// CustomMarshal replaces unsupported types with string descriptors and controls HTML escaping.
-func CustomMarshal(v interface{}, escapeHTML bool, includePrivateFields bool) ([]byte, error) {
+type Serializer func(val reflect.Value, mr Marshalizer) any
+
+type MarshalizerContext map[uintptr]string
+
+type MarshalizerInterface interface {
+	Serialize(object any) ([]byte, error)
+}
+
+type Marshalizer struct {
+	context              MarshalizerContext
+	escapeHTML           bool
+	includePrivateFields bool
+	includeImplements    bool
+	registry             SerializersRegistry
+}
+
+func NewMarshalizer(includePrivateFields bool, escapeHTML bool, emptyRegistry bool, includeImplements bool) MarshalizerInterface {
+
+	registry := SerializersRegistry{
+		kindSerializers: make(KindSerializerMap),
+		typeSerializers: make(TypeSerializerMap),
+		knownInterfaces: make(KnownInterface),
+	}
+
+	if !emptyRegistry {
+		registry.AddKind(reflect.Slice, SerializeSlice)
+		registry.AddKind(reflect.Map, SerializeMap)
+		registry.AddKind(reflect.Struct, SerializeStruct)
+		registry.AddKind(reflect.Func, SerializeFuncSignature)
+		registry.AddKind(reflect.Pointer, SerializePointer)
+
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Stringer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Scanner)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*fmt.Formatter)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*error)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Reader)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Writer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Closer)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriter)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.Seeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.WriteSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriteSeeker)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReadWriteCloser)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.WriterAt)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*io.ReaderAt)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*sync.Locker)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.Mutex)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.RWMutex)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.Atomic)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*sync.WaitGroup)(nil)).Elem()) // non interface
+		registry.AddKnownInterface(reflect.TypeOf((*http.RoundTripper)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*http.Handler)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*http.ServeHTTP)(nil)).Elem()) // unimplemented ?
+		registry.AddKnownInterface(reflect.TypeOf((*context.Context)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*context.CancelFunc)(nil)).Elem()) // non interface
+		registry.AddKnownInterface(reflect.TypeOf((*sort.Interface)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*testing.TB)(nil)).Elem())
+		// registry.AddKnownInterface(reflect.TypeOf((*sql.Scanner)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*sql.Valuer)(nil)).Elem()) // unimplemented ?
+		// registry.AddKnownInterface(reflect.TypeOf((*strconv.NumError)(nil)).Elem()) // non interface
+		// registry.AddKnownInterface(reflect.TypeOf((*os.File)(nil)).Elem()) // non interface
+		registry.AddKnownInterface(reflect.TypeOf((*net.Conn)(nil)).Elem())
+
+		registry.AddKnownInterface(reflect.TypeOf((*MarshalizerInterface)(nil)).Elem())
+		registry.AddKnownInterface(reflect.TypeOf((*SerializerRegistryInterface)(nil)).Elem())
+	}
+
+	mr := &Marshalizer{
+		context:              make(MarshalizerContext),
+		escapeHTML:           escapeHTML,
+		includePrivateFields: includePrivateFields,
+		includeImplements:    includeImplements,
+		registry:             registry,
+	}
+
+	return mr
+}
+
+func (mr Marshalizer) String() string {
+	result, err := mr.Serialize(mr)
+	if err != nil {
+		panic("can't serialize Marshalizer itself")
+	}
+	return string(result)
+}
+
+func (mr Marshalizer) Serialize(object any) ([]byte, error) {
 	// Marshal data with custom serialization
-	serializedData := serializeUnsupported(v, includePrivateFields)
+	serializedData := serialize(object, mr)
 
 	// Marshal data with indentation and optional HTML escaping
 	var result []byte
 	var err error
-	if escapeHTML {
+	if mr.escapeHTML {
 		// If escapeHTML is true, use standard MarshalIndent
 		result, err = json.MarshalIndent(serializedData, "", "  ")
 	} else {
@@ -34,147 +128,241 @@ func CustomMarshal(v interface{}, escapeHTML bool, includePrivateFields bool) ([
 	return result, nil
 }
 
-// serializeUnsupported replaces unsupported types like functions with string descriptors.
-func serializeUnsupported(v interface{}, includePrivateFields bool) interface{} {
-	if v == nil {
+func (mr Marshalizer) AddKind(kind reflect.Kind, serializer Serializer) {
+	mr.registry.AddKind(kind, serializer)
+}
+
+func (mr Marshalizer) RemoveKind(kind reflect.Kind) {
+	mr.registry.RemoveKind(kind)
+}
+
+func (mr Marshalizer) AddType(typ reflect.Type, serializer Serializer) {
+	mr.registry.AddType(typ, serializer)
+}
+
+func (mr Marshalizer) RemoveType(typ reflect.Type) {
+	mr.registry.RemoveType(typ)
+}
+
+func (mr Marshalizer) AddKnownInterface(typ reflect.Type) {
+	mr.registry.AddKnownInterface(typ)
+}
+
+func (mr Marshalizer) RemoveKnownInterface(typ reflect.Type) {
+	mr.registry.RemoveKnownInterface(typ)
+}
+
+// serialize replaces unsupported types like functions with string descriptors.
+func serialize(object any, mr Marshalizer) any {
+	if object == nil {
 		return nil
 	}
 
-	val := reflect.ValueOf(v)
-	switch val.Kind() {
-	case reflect.Pointer:
-		// Handle pointer types
-		if val.IsNil() {
-			return nil
-		}
+	val := reflect.ValueOf(object)
 
-		// Create a structure for pointers
-		ptrData := map[string]interface{}{
-			"address": fmt.Sprintf("%p", val.Interface()), // Pointer address
-			// "address": id(val.Interface()),                // Pointer address
-			"type": fmt.Sprintf("%T", val.Interface()), // Pointer type
-		}
-
-		// Serialize the dereferenced value first
-		value := serializeUnsupported(val.Elem().Interface(), includePrivateFields)
-
-		// If the dereferenced value is a map (structure-like), add pointer data
-		if reflect.ValueOf(value).Kind() == reflect.Map {
-			// Add pointer metadata to the map
-			value.(map[string]interface{})["*"] = ptrData
-			return value
-		}
-		// If it's not a map, just return the value as is
-		return value
-
-		// // Handle pointer types
-		// if val.IsNil() {
-		// 	return nil
-		// }
-
-		// // // Create a structure for pointers
-		// // ptrData := map[string]interface{}{
-		// // 	"address": fmt.Sprintf("%p", val.Interface()), // Pointer address
-		// // 	"type":    fmt.Sprintf("%T", val.Interface()), // Pointer type
-		// // }
-		// // return map[string]interface{}{
-		// // 	"*":     ptrData,                                                            // Store pointer data under "*"
-		// // 	"value": serializeUnsupported(val.Elem().Interface(), includePrivateFields), // Dereferenced value
-		// // }
-
-	case reflect.Struct:
-		// Handle structs
-		m := make(map[string]interface{})
-		typ := reflect.TypeOf(v)
-		for i := 0; i < val.NumField(); i++ {
-			field := val.Field(i)
-			fieldType := typ.Field(i)
-			if !field.CanInterface() {
-				// optional
-				if includePrivateFields {
-					m[fieldType.Name] = "[private]"
-				}
-				continue // Skip unexported fields
-			}
-			m[fieldType.Name] = serializeUnsupported(field.Interface(), includePrivateFields)
-		}
-		return m
-
-	case reflect.Slice:
-		// Handle slices
-		result := make([]interface{}, val.Len())
-		for i := 0; i < val.Len(); i++ {
-			result[i] = serializeUnsupported(val.Index(i).Interface(), includePrivateFields)
-		}
-		return result
-
-	case reflect.Map:
-		// Handle maps
-		result := make(map[string]interface{})
-		for _, key := range val.MapKeys() {
-			result[fmt.Sprintf("%v", key.Interface())] = serializeUnsupported(val.MapIndex(key).Interface(), includePrivateFields)
-		}
-		return result
-
-	default:
-		if val.Kind() == reflect.Func {
-			// Automatically generate a function descriptor
-			funcType := val.Type()
-
-			// Get parameter types of the function (if any)
-			numParams := funcType.NumIn()
-			// paramTypes := make([]string, numParams)
-			paramTypes := []string{}
-			for i := 0; i < numParams; i++ {
-				// paramTypes[i] = funcType.In(i).String()
-				if typestring := funcType.In(i).String(); len(typestring) > 0 {
-					// paramTypes[i] = typestring
-					paramTypes = append(paramTypes, removeSpaces(typestring))
-				}
-			}
-
-			// // Get return type if available
-			// var returnType string
-			// if funcType.NumOut() > 0 {
-			// 	returnType = funcType.Out(0).String()
-			// }
-
-			numReturns := funcType.NumOut()
-			// returnTypes := make([]string, numParams)
-			returnTypes := []string{}
-			for i := 0; i < numReturns; i++ {
-				if typestring := funcType.Out(i).String(); len(typestring) > 0 {
-					// returnTypes[i] = typestring
-					paramTypes = append(paramTypes, removeSpaces(typestring))
-				}
-			}
-
-			// // Create a descriptor string that includes the function name, parameter types, and return type if any
-			// if returnType != "" {
-			// 	return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
-			// } else {
-			// 	return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
-			// }
-
-			if len(returnTypes) == 0 {
-				return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
-			} else if len(returnTypes) == 1 {
-				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), joinTypes(returnTypes))
-			} else {
-				return fmt.Sprintf("func(%s) (%s)", joinTypes(paramTypes), joinTypes(returnTypes))
-			}
-		}
-		// Return the value directly for supported types
-		return v
+	if serializer, exists := mr.registry.typeSerializers[val.Type()]; exists {
+		return serializer(val, mr)
 	}
+
+	if serializer, exists := mr.registry.kindSerializers[val.Kind()]; exists {
+		return serializer(val, mr)
+	}
+
+	return object
 }
 
-// joinTypes is a helper function to join type strings with commas.
-func joinTypes(types []string) string {
-	if len(types) == 0 {
-		return ""
+func SerializePointer(val reflect.Value, mr Marshalizer) any {
+	// Handle pointer types
+	if val.IsNil() {
+		return nil
 	}
-	return strings.Join(types, ", ")
+
+	// Create a structure for pointers
+	ptrData := map[string]any{
+		"address": fmt.Sprintf("%p", val.Interface()), // Pointer address
+		"type":    fmt.Sprintf("%T", val.Interface()), // Pointer type
+	}
+
+	if mr.includeImplements {
+		interfaces := GetImplementedInterfacesDescriptor(val, mr)
+		ptrData["implements"] = interfaces
+	}
+
+	// Serialize the dereferenced value first
+	value := serialize(val.Elem().Interface(), mr)
+
+	// If the dereferenced value is a map (structure-like), add pointer data
+	if reflect.ValueOf(value).Kind() == reflect.Map {
+		// Add pointer metadata to the map
+		value.(map[string]any)["*"] = ptrData
+		return value
+	} else {
+		output := map[string]any{
+			"*":      ptrData,
+			"_value": value,
+		}
+		return output
+	}
+	// If it's not a map, just return the value as is
+	// return value
+}
+
+// DiscoverInterfaces dynamically finds all interfaces implemented by a given struct.
+func DiscoverInterfaces(structType reflect.Type, interfaces KnownInterface) []reflect.Type {
+	implemented := []reflect.Type{}
+
+	// Iterate over the known interfaces map
+	for ifaceType := range interfaces {
+		if structType.Implements(ifaceType) {
+			implemented = append(implemented, ifaceType)
+		}
+	}
+
+	return implemented
+}
+
+func SerializeStruct(val reflect.Value, mr Marshalizer) any {
+	// Handle structs
+	m := make(map[string]any)
+	typ := val.Type()
+	// typ := reflect.TypeOf(object)
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+		if !field.CanInterface() {
+			// optional
+			if mr.includePrivateFields {
+				m[fieldType.Name] = "[private]"
+			}
+			continue // Skip unexported fields
+		}
+		m[fieldType.Name] = serialize(field.Interface(), mr)
+	}
+	return m
+}
+
+func SerializeSlice(val reflect.Value, mr Marshalizer) any {
+	// Handle slices
+	result := make([]any, val.Len())
+	for i := 0; i < val.Len(); i++ {
+		result[i] = serialize(val.Index(i).Interface(), mr)
+	}
+	return result
+}
+
+func SerializeMap(val reflect.Value, mr Marshalizer) any {
+	// Handle maps
+	result := make(map[string]any)
+	for _, key := range val.MapKeys() {
+		result[fmt.Sprintf("%v", key.Interface())] = serialize(val.MapIndex(key).Interface(), mr)
+	}
+	return result
+}
+
+func SerializeFuncSignature(val reflect.Value, mr Marshalizer) any {
+	// Automatically generate a function descriptor
+	funcType := val.Type()
+
+	// Get parameter types
+	params := []string{}
+	for i := 0; i < funcType.NumIn(); i++ {
+		if typeString := funcType.In(i).String(); len(typeString) > 0 {
+			params = append(params, removeSpaces(typeString))
+		}
+	}
+
+	// Get return types
+	results := []string{}
+	for i := 0; i < funcType.NumOut(); i++ {
+		if typeString := funcType.Out(i).String(); len(typeString) > 0 {
+			results = append(results, removeSpaces(typeString))
+		}
+	}
+
+	// resolve func name
+	funcName := runtime.FuncForPC(val.Pointer()).Name()
+
+	return joinFuncSignature(funcName, params, results)
+}
+
+func SerializeMethodSignature(method reflect.Method, mr Marshalizer) string {
+	// Access the method's type
+	methodType := method.Type
+	methodName := method.Name
+	// Get parameter types (excluding the receiver)
+	params := []string{}
+	for i := 1; i < methodType.NumIn(); i++ { // Skip the first parameter, which is the receiver
+		paramType := methodType.In(i).String()
+		params = append(params, removeSpaces(paramType))
+	}
+
+	// Get return types
+	results := []string{}
+	for i := 0; i < methodType.NumOut(); i++ {
+		resultType := methodType.Out(i).String()
+		results = append(results, removeSpaces(resultType))
+	}
+
+	return joinFuncSignature(methodName, params, results)
+}
+
+func GetImplementedInterfacesDescriptor(val reflect.Value, mr Marshalizer) map[string][]string {
+	implementedInterfaces := DiscoverInterfaces(val.Type(), mr.registry.knownInterfaces)
+
+	serializedInterfaces := map[string][]string{}
+
+	if len(implementedInterfaces) > 0 {
+		for _, intf := range implementedInterfaces {
+			// if serializedInterface := GetInterfaceDescriptor(intf, mr); serializedInterface != nil {
+			// 	serializedInterfaces[intf.String()] = serializedInterface
+			// }
+			serializedInterfaces[intf.String()] = GetInterfaceDescriptor(intf, mr)
+		}
+	}
+	if len(serializedInterfaces) > 0 {
+		return serializedInterfaces
+	}
+	return nil
+}
+
+func GetInterfaceDescriptor(typ reflect.Type, mr Marshalizer) []string {
+	if typ.Kind() == reflect.Interface {
+		// If the interface is not nil, inspect the methods implemented by it
+		methods := []string{}
+
+		// Loop through all methods of the interface
+		numMethods := typ.NumMethod()
+		for i := 0; i < numMethods; i++ {
+			method := typ.Method(i)
+
+			// Handle the method signature separately
+			methodSignature := SerializeMethodSignature(method, mr)
+			methods = append(methods, methodSignature)
+		}
+		return methods
+	}
+	return nil
+}
+
+func joinFuncSignature(name string, params, results []string) string {
+	signature := ""
+
+	paramList := strings.Join(params, ", ")
+	resultList := strings.Join(results, ", ")
+
+	if len(name) > 0 {
+		signature += cleanFuncName(name) + " "
+	}
+
+	signature += fmt.Sprintf("func(%s)", paramList)
+
+	if len(results) == 1 {
+		signature += fmt.Sprintf(" %s", resultList)
+	} else if len(results) > 1 {
+		signature += fmt.Sprintf(" (%s)", resultList)
+	}
+
+	return strings.TrimSpace(signature)
 }
 
 // Function to clean up spaces between type names
@@ -182,378 +370,8 @@ func removeSpaces(typeStr string) string {
 	return strings.ReplaceAll(typeStr, " ", "")
 }
 
-// // ---------------------------------------------------------------------------------------------------------
-
-// package pprint
-
-// import (
-// 	"encoding/json"
-// 	"fmt"
-// 	"reflect"
-// )
-
-// // CustomMarshal replaces unsupported types with string descriptors and controls HTML escaping.
-// func CustomMarshal(v interface{}, escapeHTML bool, includePrivateFields bool) ([]byte, error) {
-// 	// Marshal data with custom serialization
-// 	serializedData := serializeUnsupported(v, includePrivateFields)
-
-// 	// Marshal data with indentation and optional HTML escaping
-// 	var result []byte
-// 	var err error
-// 	if escapeHTML {
-// 		// If escapeHTML is true, use standard MarshalIndent
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	} else {
-// 		// If escapeHTML is false, use encoder with SetEscapeHTML(false)
-// 		encoder := json.NewEncoder(nil)
-// 		encoder.SetEscapeHTML(false)
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	}
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return result, nil
-// }
-
-// // serializeUnsupported replaces unsupported types like functions with string descriptors.
-// func serializeUnsupported(v interface{}, includePrivateFields bool) interface{} {
-// 	if v == nil {
-// 		return nil
-// 	}
-
-// 	val := reflect.ValueOf(v)
-// 	switch val.Kind() {
-// 	case reflect.Pointer:
-// 		// Dereference the pointer
-// 		if val.IsNil() {
-// 			return nil
-// 		}
-// 		// Handle pointers by marking them with a * prefix on the struct key
-// 		result := serializeUnsupported(val.Elem().Interface(), includePrivateFields)
-// 		// If it's a map, add "*" prefix to the struct key only
-// 		if reflect.TypeOf(result).Kind() == reflect.Map {
-// 			m := result.(map[string]interface{})
-// 			for key := range m {
-// 				// Only add * to the top-level key for the struct
-// 				if key != "*private" { // To avoid adding * to private fields
-// 					m["*"+key] = m[key] // Add '*' prefix to the top-level key
-// 					delete(m, key)       // Remove the old key
-// 				}
-// 			}
-// 		}
-// 		return result
-// 	case reflect.Struct:
-// 		// Handle structs
-// 		m := make(map[string]interface{})
-// 		typ := reflect.TypeOf(v)
-// 		for i := 0; i < val.NumField(); i++ {
-// 			field := val.Field(i)
-// 			fieldType := typ.Field(i)
-// 			if !field.CanInterface() {
-// 				// optional
-// 				if includePrivateFields {
-// 					m[fieldType.Name] = "[private]"
-// 				}
-// 				continue // Skip unexported fields
-// 			}
-// 			m[fieldType.Name] = serializeUnsupported(field.Interface(), includePrivateFields)
-// 		}
-// 		return m
-// 	case reflect.Slice:
-// 		// Handle slices
-// 		result := make([]interface{}, val.Len())
-// 		for i := 0; i < val.Len(); i++ {
-// 			result[i] = serializeUnsupported(val.Index(i).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	case reflect.Map:
-// 		// Handle maps
-// 		result := make(map[string]interface{})
-// 		for _, key := range val.MapKeys() {
-// 			result[fmt.Sprintf("%v", key.Interface())] = serializeUnsupported(val.MapIndex(key).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	default:
-// 		if val.Kind() == reflect.Func {
-// 			// Automatically generate a function descriptor
-// 			funcType := val.Type()
-// 			// funcName := funcType.Name()
-
-// 			// Get parameter types of the function (if any)
-// 			numParams := funcType.NumIn()
-// 			paramTypes := make([]string, numParams)
-// 			for i := 0; i < numParams; i++ {
-// 				paramTypes[i] = funcType.In(i).String()
-// 			}
-
-// 			// Get return type if available
-// 			var returnType string
-// 			if funcType.NumOut() > 0 {
-// 				returnType = funcType.Out(0).String()
-// 			}
-
-// 			// Create a descriptor string that includes the function name, parameter types, and return type if any
-// 			if returnType != "" {
-// 				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
-// 			} else {
-// 				return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
-// 			}
-// 		}
-// 		// Return the value directly for supported types
-// 		return v
-// 	}
-// }
-
-// // joinTypes is a helper function to join type strings with commas.
-// func joinTypes(types []string) string {
-// 	if len(types) == 0 {
-// 		return ""
-// 	}
-// 	return fmt.Sprintf("%s", types)
-// }
-
-// package pprint
-
-// import (
-// 	"encoding/json"
-// 	"fmt"
-// 	"reflect"
-// )
-
-// // CustomMarshal replaces unsupported types with string descriptors and controls HTML escaping.
-// func CustomMarshal(v interface{}, escapeHTML bool, includePrivateFields bool) ([]byte, error) {
-// 	// Marshal data with custom serialization
-// 	serializedData := serializeUnsupported(v, includePrivateFields)
-
-// 	// Marshal data with indentation and optional HTML escaping
-// 	var result []byte
-// 	var err error
-// 	if escapeHTML {
-// 		// If escapeHTML is true, use standard MarshalIndent
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	} else {
-// 		// If escapeHTML is false, use encoder with SetEscapeHTML(false)
-// 		encoder := json.NewEncoder(nil)
-// 		encoder.SetEscapeHTML(false)
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	}
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return result, nil
-// }
-
-// // serializeUnsupported replaces unsupported types like functions with string descriptors.
-// func serializeUnsupported(v interface{}, includePrivateFields bool) interface{} {
-// 	if v == nil {
-// 		return nil
-// 	}
-
-// 	val := reflect.ValueOf(v)
-// 	switch val.Kind() {
-// 	case reflect.Pointer:
-// 		// Dereference the pointer
-// 		if val.IsNil() {
-// 			return nil
-// 		}
-// 		// Handle pointers by marking them with a * prefix
-// 		result := serializeUnsupported(val.Elem().Interface(), includePrivateFields)
-// 		// If it's a pointer, prepend "*" to the key
-// 		if reflect.TypeOf(result).Kind() == reflect.Map {
-// 			m := result.(map[string]interface{})
-// 			for key := range m {
-// 				m["*"+key] = m[key] // Add '*' prefix to each key
-// 				delete(m, key)      // Remove the old key
-// 			}
-// 		}
-// 		return result
-// 	case reflect.Struct:
-// 		// Handle structs
-// 		m := make(map[string]interface{})
-// 		typ := reflect.TypeOf(v)
-// 		for i := 0; i < val.NumField(); i++ {
-// 			field := val.Field(i)
-// 			fieldType := typ.Field(i)
-// 			if !field.CanInterface() {
-// 				// optional
-// 				if includePrivateFields {
-// 					m[fieldType.Name] = "[private]"
-// 				}
-// 				continue // Skip unexported fields
-// 			}
-// 			m[fieldType.Name] = serializeUnsupported(field.Interface(), includePrivateFields)
-// 		}
-// 		return m
-// 	case reflect.Slice:
-// 		// Handle slices
-// 		result := make([]interface{}, val.Len())
-// 		for i := 0; i < val.Len(); i++ {
-// 			result[i] = serializeUnsupported(val.Index(i).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	case reflect.Map:
-// 		// Handle maps
-// 		result := make(map[string]interface{})
-// 		for _, key := range val.MapKeys() {
-// 			result[fmt.Sprintf("%v", key.Interface())] = serializeUnsupported(val.MapIndex(key).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	default:
-// 		if val.Kind() == reflect.Func {
-// 			// Automatically generate a function descriptor
-// 			funcType := val.Type()
-// 			// funcName := funcType.Name()
-
-// 			// Get parameter types of the function (if any)
-// 			numParams := funcType.NumIn()
-// 			paramTypes := make([]string, numParams)
-// 			for i := 0; i < numParams; i++ {
-// 				paramTypes[i] = funcType.In(i).String()
-// 			}
-
-// 			// Get return type if available
-// 			var returnType string
-// 			if funcType.NumOut() > 0 {
-// 				returnType = funcType.Out(0).String()
-// 			}
-
-// 			// Create a descriptor string that includes the function name, parameter types, and return type if any
-// 			if returnType != "" {
-// 				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
-// 			} else {
-// 				return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
-// 			}
-// 		}
-// 		// Return the value directly for supported types
-// 		return v
-// 	}
-// }
-
-// // joinTypes is a helper function to join type strings with commas.
-// func joinTypes(types []string) string {
-// 	if len(types) == 0 {
-// 		return ""
-// 	}
-// 	return fmt.Sprintf("%s", types)
-// }
-
-// package pprint
-
-// import (
-// 	"encoding/json"
-// 	"fmt"
-// 	"reflect"
-// )
-
-// // CustomMarshal replaces unsupported types with string descriptors and controls HTML escaping.
-// func CustomMarshal(v interface{}, escapeHTML bool, includePrivateFields bool) ([]byte, error) {
-// 	// Marshal data with custom serialization
-// 	serializedData := serializeUnsupported(v, includePrivateFields)
-
-// 	// Marshal data with indentation and optional HTML escaping
-// 	var result []byte
-// 	var err error
-// 	if escapeHTML {
-// 		// If escapeHTML is true, use standard MarshalIndent
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	} else {
-// 		// If escapeHTML is false, use encoder with SetEscapeHTML(false)
-// 		encoder := json.NewEncoder(nil)
-// 		encoder.SetEscapeHTML(false)
-// 		result, err = json.MarshalIndent(serializedData, "", "  ")
-// 	}
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return result, nil
-// }
-
-// // serializeUnsupported replaces unsupported types like functions with string descriptors.
-// func serializeUnsupported(v interface{}, includePrivateFields bool) interface{} {
-// 	if v == nil {
-// 		return nil
-// 	}
-
-// 	val := reflect.ValueOf(v)
-// 	switch val.Kind() {
-// 	case reflect.Pointer:
-// 		// Dereference the pointer
-// 		if val.IsNil() {
-// 			return nil
-// 		}
-// 		return serializeUnsupported(val.Elem().Interface(), includePrivateFields)
-// 	case reflect.Struct:
-// 		// Handle structs
-// 		m := make(map[string]interface{})
-// 		typ := reflect.TypeOf(v)
-// 		for i := 0; i < val.NumField(); i++ {
-// 			field := val.Field(i)
-// 			fieldType := typ.Field(i)
-// 			if !field.CanInterface() {
-// 				// optional
-// 				if includePrivateFields {
-// 					m[fieldType.Name] = "[private]"
-// 				}
-// 				continue // Skip unexported fields
-// 			}
-// 			m[fieldType.Name] = serializeUnsupported(field.Interface(), includePrivateFields)
-// 		}
-// 		return m
-// 	case reflect.Slice:
-// 		// Handle slices
-// 		result := make([]interface{}, val.Len())
-// 		for i := 0; i < val.Len(); i++ {
-// 			result[i] = serializeUnsupported(val.Index(i).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	case reflect.Map:
-// 		// Handle maps
-// 		result := make(map[string]interface{})
-// 		for _, key := range val.MapKeys() {
-// 			result[fmt.Sprintf("%v", key.Interface())] = serializeUnsupported(val.MapIndex(key).Interface(), includePrivateFields)
-// 		}
-// 		return result
-// 	default:
-// 		if val.Kind() == reflect.Func {
-// 			// Automatically generate a function descriptor
-// 			funcType := val.Type()
-// 			// funcName := funcType.Name()
-
-// 			// Get parameter types of the function (if any)
-// 			numParams := funcType.NumIn()
-// 			paramTypes := make([]string, numParams)
-// 			for i := 0; i < numParams; i++ {
-// 				paramTypes[i] = funcType.In(i).String()
-// 			}
-
-// 			// Get return type if available
-// 			var returnType string
-// 			if funcType.NumOut() > 0 {
-// 				returnType = funcType.Out(0).String()
-// 			}
-
-// 			// Create a descriptor string that includes the function name, parameter types, and return type if any
-// 			if returnType != "" {
-// 				return fmt.Sprintf("func(%s) %s", joinTypes(paramTypes), returnType)
-// 			} else {
-// 				return fmt.Sprintf("func(%s)", joinTypes(paramTypes))
-// 			}
-// 		}
-// 		// Return the value directly for supported types
-// 		return v
-// 	}
-// }
-
-// // joinTypes is a helper function to join type strings with commas.
-// func joinTypes(types []string) string {
-// 	if len(types) == 0 {
-// 		return ""
-// 	}
-// 	return fmt.Sprintf("%s", types)
-// }
+func cleanFuncName(fullName string) string {
+	// Split the full name by "." and return the last part
+	parts := strings.Split(fullName, "/")
+	return parts[len(parts)-1]
+}

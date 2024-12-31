@@ -51,6 +51,16 @@ func TestPPrintScalars(t *testing.T) {
 	} else {
 		PPrint(f, nil, 1, 80, 2, false, true, false)
 	}
+
+	b := []byte{15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100, 15, 20, 30, 40, 50, 100}
+	be := `(0f141e2832640f141e283264
+0f141e2832640f141e283264
+0f141e283264)`
+	if out := PFormat(b, nil, 1, 80, 2, false, true, false); out != be {
+		t.Errorf("expected %s, got %s", be, out)
+	} else {
+		PPrint(b, nil, 1, 80, 2, false, true, false)
+	}
 }
 
 func TestPPrintPtr(t *testing.T) {
@@ -334,6 +344,10 @@ func TestJsonify(t *testing.T) {
 	fmt.Println(string(jsonBytes))
 }
 
+func TempFunc(a any, b int) string {
+	return ""
+}
+
 func TestMarshalizer(t *testing.T) {
 	// Example data with nested structs, maps, and functions
 	var ip *float64 = new(float64)
@@ -349,6 +363,10 @@ func TestMarshalizer(t *testing.T) {
 		F1: 5, F5: ppPtr,
 	}
 	ppPtr2 := &pp2
+
+	reg := &SerializersRegistry{}
+	var regintf SerializerRegistryInterface = reg
+
 	data := map[any]interface{}{
 		"user": map[string]interface{}{
 			"name": "John Doe",
@@ -391,18 +409,20 @@ func TestMarshalizer(t *testing.T) {
 		"stats2": struct {
 			F func(any, int) string
 		}{
-			F: func(a any, b int) string { return "" },
+			F: TempFunc,
 		},
 		"stats3": struct {
 			F func(any, int) (string, error)
 		}{
 			F: func(a any, b int) (string, error) { return "", nil },
 		},
-		0: []any{5, 6},
+		0:              []any{5, 6},
+		"marshalizer":  regintf,
+		"marshalizer2": regintf.(*SerializersRegistry),
 	}
 
 	// Marshal with custom handling
-	jsonBytes, err := CustomMarshal(data, true, true)
+	jsonBytes, err := NewMarshalizer(true, false, false, true).Serialize(data)
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 		return
@@ -410,4 +430,7 @@ func TestMarshalizer(t *testing.T) {
 
 	// Print JSON string
 	fmt.Println(string(jsonBytes))
+
+	PPrint(data, nil, 1, 80, 5, false, true, false)
+
 }

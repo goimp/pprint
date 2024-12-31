@@ -35,25 +35,14 @@ type PrettyPrinterInterface interface {
 	pprintSlice(object any, stream io.Writer, indent, allowance int, context Context, level int)  // +
 	pprintStruct(object any, stream io.Writer, indent, allowance int, context Context, level int) // +
 	pprintString(object any, stream io.Writer, indent, allowance int, context Context, level int) // +
-	// pprintBytes(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / pprint_bytearray
-	// pprintMappingProxy(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / _pprint_mappingproxy
-	// pprintSimpleNameSpace(object []any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_bytes / _pprint_simplenamespace
+	pprintBytes(object any, stream io.Writer, indent, allowance int, context Context, level int)  // +
 
-	formatMapItems(items []MappingItem, stream io.Writer, indent, allowance int, context Context, level int) // +
-	formatItems(object []any, stream io.Writer, indent, allowance int, context Context, level int)           // +
-	formatStructItems(items []StructField, stream io.Writer, indent, allowance int, context Context, level int)
+	formatMapItems(items []MappingItem, stream io.Writer, indent, allowance int, context Context, level int)    // +
+	formatItems(object []any, stream io.Writer, indent, allowance int, context Context, level int)              // +
+	formatStructItems(items []StructField, stream io.Writer, indent, allowance int, context Context, level int) // +
 
-	//	formatNameSpaceItems(items []map[any]any, stream io.Writer, indent, allowance int, context Context, level int) // pprint_dict
-
-	repr(object any, context Context, level int) string                            // +
-	Format(object any, context Context, maxLevels, level int) (string, bool, bool) // +
-	// pprintDefaultMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int) // -
-	// pprintCounter(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
-	// pprintChainMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
-	// pprintDeque(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
-	// pprintUserMap(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
-	// pprintUserSlice(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
-	// pprintUserString(object map[any]any, defaultFactory func() any, stream io.Writer, indent, allowance int, context Context, level int)
+	repr(object any, context Context, level int) string                              // +
+	Format(object any, context Context, maxLevels, level int) (string, bool, bool)   // +
 	safeRepr(object any, context Context, maxLevels, level int) (string, bool, bool) // +
 }
 
@@ -213,9 +202,16 @@ func (pp PrettyPrinter) formatMapItems(items []MappingItem, stream io.Writer, in
 }
 
 func (pp PrettyPrinter) pprintSlice(object any, stream io.Writer, indent, allowance int, context Context, level int) {
+	// Wrap []byte
+	if slice, ok := object.([]byte); ok {
+		pp.pprintBytes(slice, stream, indent, allowance, context, level)
+		return
+	}
+
 	// Write the opening bracket for the slice
 	io.WriteString(stream, "[")
 	// Ensure the object is a slice, then call formatItems to handle the items
+
 	if slice, ok := object.([]any); ok {
 		pp.formatItems(slice, stream, indent, allowance+1, context, level)
 	}
@@ -399,6 +395,37 @@ func (pp PrettyPrinter) pprintString(object any, stream io.Writer, indent, allow
 			io.WriteString(stream, rep)
 		}
 		if level == 1 {
+			io.WriteString(stream, ")")
+		}
+	}
+}
+
+func (pp PrettyPrinter) pprintBytes(object any, stream io.Writer, indent, allowance int, context Context, level int) {
+	if data, ok := object.([]byte); ok {
+		if len(data) <= 4 {
+			io.WriteString(stream, fmt.Sprintf("%x", data))
+			return
+		}
+
+		parens := level == 1
+		if parens {
+			indent++
+			allowance++
+			io.WriteString(stream, "(")
+		}
+
+		delim := ""
+		wrapped := wrapBytesRepr(data, pp.width-indent, allowance) // Assuming 80 as the default width.
+		for _, line := range wrapped {
+			io.WriteString(stream, delim)
+			// io.WriteString(stream, strings.Repeat(" ", indent))
+			io.WriteString(stream, line)
+			if delim == "" {
+				delim = "\n"
+			}
+		}
+
+		if parens {
 			io.WriteString(stream, ")")
 		}
 	}
